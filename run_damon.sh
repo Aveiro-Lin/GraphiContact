@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=1 python src/tools/train_deco_contact_damon.py

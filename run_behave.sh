@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=4 python src/tools/train_deco_contact_behave.py
