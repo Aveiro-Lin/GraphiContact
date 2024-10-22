@@ -14,8 +14,8 @@ We suggest to create a new conda environment and install all the relevant depend
 
 ```bash
 # Create a new environment
-conda create --name gphmr python=3.7
-conda activate gphmr
+conda create --name gphicon python=3.7
+conda activate gphicon
 
 # Install Pytorch
 conda install pytorch==1.4.0 torchvision==0.5.0 cudatoolkit=10.1 -c pytorch
