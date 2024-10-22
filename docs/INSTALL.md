@@ -4,7 +4,7 @@ Our codebase is developed based on Ubuntu 16.04 and NVIDIA GPU cards.
 
 ### Requirements
 - Python 3.7
-- Pytorch 1.4
+- Pytorch 1.13.1
 - torchvision 0.5.0
 - cuda 10.1
 
