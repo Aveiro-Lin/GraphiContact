@@ -32,7 +32,7 @@ If you want to view more detailed colorful mesh results, you can run the command
 ```bash
 import open3d as o3d
 
-mesh = o3d.t.io.read_triangle_mesh("./colored_mesh_projection.ply")
+mesh = o3d.t.io.read_triangle_mesh("./colored_mesh2.ply")  #If you need a contactless predictive pose-aware mesh, you can use this file "colored_mesh.ply".
 mesh.compute_vertex_normals()
 
 from  open3d.visualization import *
