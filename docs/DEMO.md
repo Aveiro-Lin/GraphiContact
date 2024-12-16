@@ -14,6 +14,12 @@ This demo runs 3D human mesh reconstruction and contact prediction from a single
 
 Our codes require the input images that are already **cropped with the person centered** in the image. The input images should have the size of `224x224`. To run the demo, please place your test images under path to your test path , and then run the following script.
 
+The **Scene Decoder** and **Part Decoder** visualization images are stored in the subdirectory: `GraphiContact/src/tools/Renders`.  
+```bash
+GraphiContact/src/tools/Renders
+```
+The **colored** and **non-contact point-colored** mesh `.ply` files can be found in the folder: `GraphiContact/src/tools/`.  
+
 For example, if we utilize the DAMON dataset, the following code you can refer:
 ```bash
 python GraphiContact/src/tools/deco_inference_damon.py
