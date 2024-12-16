@@ -487,7 +487,10 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
                 # org_img_paths = [os.path.join(data_path, path) for path in org_img_paths]
                 train_label = np.load(label_path)
 
-                
+                args.inputs = os.path.basename(image_file)
+                # please keep the image name in sample be the same as dataset(HOI)
+                # vcoco_000000298689.jpg: cover image of skiing; vcoco_000000008383.jpg: segmented image of a bed and computer; vcoco_000000098596.jpg: bicycle image; vcoco_000000132430.jpg: lying down image; vcoco_000000258061.jpg: surfing image;
+
                 tr_idx = 0
                 foridx = 'datasets/HOT-Annotated/images/' + args.inputs
                 for x in range(len(train_label['imgname'])):
@@ -730,6 +733,8 @@ def parse_args():
                         help="adjust image resolution.")
     parser.add_argument("--image_file_or_path", default='Path/to/GraphiContact/samples/human-body_deco', type=str, 
                         help="test data") 
+    parser.add_argument("--input_path", default='Path/to/GraphiContact/samples/human-body_deco', type=str, 
+                        help="test data") 
     #########################################################
     # Loading/saving checkpoints
     #########################################################
@@ -789,8 +794,7 @@ def main(args):
     args.distributed = args.num_gpus > 1
     args.device = torch.device(args.device)
 
-    args.inputs = 'vcoco_000000298689.jpg'
-    # vcoco_000000298689.jpg: cover image of skiing; vcoco_000000008383.jpg: segmented image of a bed and computer; vcoco_000000098596.jpg: bicycle image; vcoco_000000132430.jpg: lying down image; vcoco_000000258061.jpg: surfing image;
+    
     mkdir(args.output_dir)
     logger = setup_logger("Graphormer", args.output_dir, get_rank())
     set_seed(args.seed, args.num_gpus)
