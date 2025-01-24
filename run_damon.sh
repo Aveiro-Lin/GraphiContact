@@ -1,5 +1,9 @@
 CUDA_VISIBLE_DEVICES=1 python src/tools/train_deco_contact_damon.py
 
-#上述指令默认不包括使用SMM架构 如果你要使用SMM Architecture，请使用如下指令
+# The above instructions do not include using the SMM architecture. If you want to use the SMM Architecture, please use the following command:
 
-python src/tools/train_deco_contact_damon .py
+# python src/tools/train_deco_contact_damon_smm.py --n_infers n
+
+# Here, "n" refers to the number of parallel streams. For example, if the optimal number of streams mentioned in the paper is N=4, the training command would look like this:
+
+# python src/tools/train_deco_contact_damon_smm.py --n_infers 4
