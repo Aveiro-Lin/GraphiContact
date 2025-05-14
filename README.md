@@ -4,8 +4,8 @@ We have to say that an important part of the code framework for this project ref
 
 The GraphiContact model excels in 3D human body reconstruction and interaction analysis, using CNNs and graphormer encoders to predict contact points and 3D mesh coordinates. It achieves state-of-the-art results across multiple datasets, and its code has been open-sourced for academic and industrial use.
 
- <img src="docs/Overview.png" width="650"> 
- <img src="docs/deco_graph.png" width="650"> 
+ <img src="docs/Overview.png" width="750"> 
+ <img src="docs/deco_graph.png" width="750"> 
 
 ## Installation
 Check [INSTALL.md](docs/INSTALL.md) for installation instructions.
