@@ -1,7 +1,7 @@
 # ✨GraphiContact✨
 
 
-The GraphiContact model excels in 3D human body reconstruction and interaction analysis, using CNNs and graphormer encoders to predict contact points and 3D mesh coordinates. It achieves state-of-the-art results across multiple datasets, and its code has been open-sourced for academic and industrial use.
+GraphiContact is a novel method designed to improve 3D human mesh reconstruction and contact point prediction from monocular RGB images. The core functionality of the model integrates pose-aware features with human-scene interaction understanding, enhancing the accuracy of both contact point detection and 3D human reconstruction. The key innovation lies in its use of **Single-Image Multi-Infer Uncertainty (SIMU) Modeling**, which simulates perceptual variations (like occlusions and lighting changes) to boost model robustness in challenging real-world scenarios. Additionally, GraphiContact incorporates a **transformer-based approach**, utilizing pre-trained models through transfer learning and a novel adaptive aggregation mechanism to integrate pose-aware features for more precise human-environment interaction modeling. This unique combination enables the system to achieve superior performance in contact prediction and human reconstruction tasks across multiple benchmark datasets.
 
  <img src="docs/Overview.png" width="850"> 
  <img src="docs/deco_graph.png" width="900"> 
