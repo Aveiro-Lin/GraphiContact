@@ -16,6 +16,7 @@ from opendr.camera import ProjectPoints
 from opendr.renderer import ColoredRenderer, TexturedRenderer
 from opendr.lighting import LambertianPointLight
 import random
+import os
 
 
 # Rotate the points by a specified angle.
@@ -481,19 +482,21 @@ def visualize_reconstruction_no_text(img, img_size, vertices, camera, renderer, 
     combined = np.hstack([img,rend_img])
     return combined
 
-def visualize_reconstruction_no_text_new(img, img_size, vertices, camera, renderer, color='pink', focal_length=1000):
+def visualize_reconstruction_no_text_new(img, img_size, vertices, camera, renderer, color='pink', focal_length=1000, save_root=None):
     """Overlays gt_kp and pred_kp on img.
     Draws vert with text.
     Renderer is an instance of SMPLRenderer.
     """
     # Fix a flength so i can render this with persp correct scale
     res = img.shape[1]
+    camera = camera.flatten()
     camera_t = np.array([camera[1], camera[2], 2*focal_length/(res * camera[0] +1e-9)])
     print(camera_t)
     rend_img = renderer.render(vertices, camera_t=camera_t,
                                img=img, use_bg=True,
                                focal_length=focal_length,
-                               body_color=color)
+                               body_color=color,
+                               save_root=save_root)
 
 
 
@@ -550,6 +553,7 @@ class Renderer(object):
                disp_text=False,
                gt_keyp=None,
                pred_keyp=None,
+               save_root='GraphiContact/src/tools/',
                **kwargs):
         if img is not None:
             height, width = img.shape[:2]
@@ -586,6 +590,9 @@ class Renderer(object):
                     img) * np.array(bg_color)
         if body_color is None:
             body_color = self.colors['light_blue']
+
+        if isinstance(body_color, str):
+            body_color = self.colors[body_color]
         # else:
         #     body_color = self.colors[body_color]
         # print()
@@ -595,13 +602,13 @@ class Renderer(object):
         red_threshold_high = 0.9
         green_blue_threshold_low = 0.1
       
-        red_vertices_idx = np.where((body_color[:, 0] > red_threshold_high) &
-                            (body_color[:, 1] < green_blue_threshold_low) &
-                            (body_color[:, 2] < green_blue_threshold_low))[0]
+        # red_vertices_idx = np.where((body_color[:, 0] > red_threshold_high) &
+        #                     (body_color[:, 1] < green_blue_threshold_low) &
+        #                     (body_color[:, 2] < green_blue_threshold_low))[0]
 
-        # red_vertices_idx = np.where((body_color[ 0] > red_threshold_high) &
-        #                     (body_color[ 1] < green_blue_threshold_low) &
-        #                     (body_color[ 2] < green_blue_threshold_low))[0]
+        red_vertices_idx = np.where((body_color[ 0] > red_threshold_high) &
+                            (body_color[ 1] < green_blue_threshold_low) &
+                            (body_color[ 2] < green_blue_threshold_low))[0]
         print('red', red_vertices_idx)
         print(faces.shape)
         
@@ -616,10 +623,10 @@ class Renderer(object):
         # mesh.visual.face_colors = face_colors
 
         # Keep mesh to PLY
-        mesh.export('Path/to/GraphiContact/src/tools/colored_mesh.ply')
+        mesh.export(os.path.join(save_root, 'colored_mesh.ply'))
         import open3d as o3d
 
-        mesh = o3d.t.io.read_triangle_mesh("Path/to/GraphiContact/src/tools/colored_mesh.ply")
+        mesh = o3d.t.io.read_triangle_mesh(os.path.join(save_root, 'colored_mesh.ply'))
         mesh.compute_vertex_normals()
 
         device = o3d.core.Device("CPU:0")
@@ -632,7 +639,7 @@ class Renderer(object):
 
         mesh.vertex.colors = o3d.core.Tensor(body_color, dtype_f, device)
 
-        o3d.t.io.write_triangle_mesh("Path/to/GraphiContact/src/tools/colored_mesh2.ply", mesh)
+        o3d.t.io.write_triangle_mesh(os.path.join(save_root, 'colored_mesh2.ply'), mesh)
 
         self.renderer.set(v=vertices, f=faces, vc=body_color, bgcolor=np.ones(3))
         albedo = self.renderer.vc

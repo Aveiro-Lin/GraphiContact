@@ -3,12 +3,13 @@ import os
 import trimesh
 import PIL.Image as pil_img
 import numpy as np
+os.environ["PYOPENGL_PLATFORM"] = "osmesa"
 import pyrender
 
 
 IMG_NORM_MEAN = [0.485, 0.456, 0.406]
 IMG_NORM_STD = [0.229, 0.224, 0.225]
-os.environ['PYOPENGL_PLATFORM'] = 'egl'
+# os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
 def render_image(scene, img_res, img=None, viewer=False):
     '''
@@ -136,7 +137,7 @@ def gen_render(img, contact_labels_3d_pred, contact_2d_pred_rgb, sem_mask_pred, 
     # contact_2d_gt_rgb = output['contact_2d_gt'].cpu().numpy()
     # contact_2d_pred_rgb = output['contact_2d_pred_rgb'].cpu().numpy()
 
-    mesh_path = os.path.join('Path/to/GraphiContact/src/tools', 'smpl_neutral_tpose.ply')
+    mesh_path = os.path.join('GraphiContact/src/tools', 'smpl_neutral_tpose.ply')
     gt_mesh = trimesh.load(mesh_path, process=False)
     pred_mesh = trimesh.load(mesh_path, process=False)
 

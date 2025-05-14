@@ -129,13 +129,13 @@ class GraphConvolution(torch.nn.Module):
         self.out_features = out_features
 
         if mesh=='body':
-            adj_indices = torch.load('/Path/to/GraphiContact/src/modeling/data/smpl_431_adjmat_indices.pt')
-            adj_mat_value = torch.load('/Path/to/GraphiContact/src/modeling/data/smpl_431_adjmat_values.pt')
-            adj_mat_size = torch.load('/Path/to/GraphiContact/src/modeling/data/smpl_431_adjmat_size.pt')
+            adj_indices = torch.load('/data3/liyang/Proj/GraphiContact/GraphiContact/src/modeling/data/smpl_431_adjmat_indices.pt')
+            adj_mat_value = torch.load('/data3/liyang/Proj/GraphiContact/GraphiContact/src/modeling/data/smpl_431_adjmat_values.pt')
+            adj_mat_size = torch.load('/data3/liyang/Proj/GraphiContact/GraphiContact/src/modeling/data/smpl_431_adjmat_size.pt')
         elif mesh=='hand':
-            adj_indices = torch.load('/Path/to/GraphiContact/src/modeling/data/mano_195_adjmat_indices.pt')
-            adj_mat_value = torch.load('/Path/to/GraphiContact/src/modeling/data/mano_195_adjmat_values.pt')
-            adj_mat_size = torch.load('/Path/to/GraphiContact/src/modeling/data/mano_195_adjmat_size.pt')
+            adj_indices = torch.load('/data3/liyang/Proj/GraphiContact/GraphiContact/src/modeling/data/mano_195_adjmat_indices.pt')
+            adj_mat_value = torch.load('/data3/liyang/Proj/GraphiContact/GraphiContact/src/modeling/data/mano_195_adjmat_values.pt')
+            adj_mat_size = torch.load('/data3/liyang/Proj/GraphiContact/GraphiContact/src/modeling/data/mano_195_adjmat_size.pt')
 
         self.adjmat = torch.sparse_coo_tensor(adj_indices, adj_mat_value, size=adj_mat_size).to(device)
 

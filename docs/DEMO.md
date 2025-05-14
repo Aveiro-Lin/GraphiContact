@@ -20,17 +20,10 @@ The **colored** and **non-contact point-colored** mesh `.ply` files can be found
 
 For example, if we utilize the DAMON dataset, the following code you can refer:
 ```bash
-python GraphiContact/src/tools/deco_inference_damon.py
+python GraphiContact/src/tools/graphi_inference_damon.py --image_file_or_path [IMAGE_FILE_OR_PATH] --save_root [SAVE_ROOT]
 ```
 
-If you would like to check the contact vertices in the human cloud points, kindly run the code:
-```bash
-python GraphiContact/src/tools/3d_visualization.ipynb
-```
-
-After running, it will generate the results in the folder
-`--scene-part_segmentation GraphiContact/src/tools/Renders/Xscene.png`
-`--colored_mesh_file_or_path GraphiContact/src/tools/colored_mesh.ply`
+The `--image_file_or_path` parameter specifies the path to the input image(s), denoted as `[IMAGE_FILE_OR_PATH]`, while the `--save_root` parameter defines the root directory for saving the prediction results, denoted as `[SAVE_ROOT]`. The prediction output includes scene segmentation results and colorized meshes, which are saved under the directory `[SAVE_ROOT]/[IMAGE_NAME]`. If `[IMAGE_FILE_OR_PATH]` refers to a single image file, `[IMAGE_NAME]` corresponds to the name of that file. If `[IMAGE_FILE_OR_PATH]` is a directory, `[IMAGE_NAME]` corresponds to the names of the individual images contained within that directory.
 
 If you want to view more detailed colorful mesh results, you can run the command locally. Below is the sample code.
 ```bash

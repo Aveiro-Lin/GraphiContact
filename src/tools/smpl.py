@@ -91,7 +91,7 @@ class SMPL(_SMPL):
     def __init__(self, *args, **kwargs):
         super(SMPL, self).__init__(*args, **kwargs)
         joints = [JOINT_MAP[i] for i in JOINT_NAMES]
-        J_regressor_extra = np.load('Path/to/GraphiContact/src/smpl/J_regressor_extra.npy')
+        J_regressor_extra = np.load('/data3/liyang/Proj/GraphiContact/GraphiContact/src/smpl/J_regressor_extra.npy')
         self.register_buffer('J_regressor_extra', torch.tensor(J_regressor_extra, dtype=torch.float32))
         self.joint_map = torch.tensor(joints, dtype=torch.long)
 

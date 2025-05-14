@@ -1,1 +1,1 @@
-CUDA_VISIBLE_DEVICES=4 python src/tools/train_deco_contact_rich.py
+CUDA_VISIBLE_DEVICES=0,7 python src/tools/train_graphi_contact_rich.py

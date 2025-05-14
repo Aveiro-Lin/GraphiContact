@@ -1,8 +1,3 @@
-monai==1.0.1
-manopth
-#pyrender==0.1.33
-smplx==0.1.28
-hmr
 scikit-learn
 scikit-image
 jpeg4py
@@ -11,10 +6,14 @@ pandas
 configargparse
 flatten_dict
 chumpy
-pytorch3d
-bitsandbytes
-opendr
 numpy==1.23.1
 yacs
-networkx==2.5
+networkx==3.2.1
 charset-normalizer==3.1.0
+open3d
+opencv-python
+boto3==1.16.34
+loguru
+trimesh
+pyrender==0.1.45
+einops

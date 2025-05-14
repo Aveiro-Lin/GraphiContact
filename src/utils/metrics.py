@@ -11,7 +11,7 @@ def metric(mask, pred, back=True):
 
   return iou
 
-DIST_MATRIX_PATH = '/Path/to/smpl_neutral_geodesic_dist.npy'
+DIST_MATRIX_PATH = '/data3/liyang/Proj/GraphiContact/GraphiContact/src/modeling/data/smpl_neutral_geodesic_dist.npy'
 #Kindly check the website of rich dataset.
 
 DIST_MATRIX = np.load(DIST_MATRIX_PATH)

@@ -25,7 +25,7 @@ import gc
 import numpy as np
 import cv2
 import sys
-sys.path.append('Path/to/GraphiContact')
+sys.path.append('/data3/liyang/Proj/GraphiContact/')
 from src.modeling.bert.diff_renderer import Pytorch3D
 from src.modeling.bert import BertConfig, Graphormer
 from src.modeling.bert import Graphormer_Body_Network as Graphormer_Network
@@ -50,6 +50,8 @@ from src.utils.geometric_layers import orthographic_projection
 import copy
 from PIL import Image
 from torchvision import transforms
+
+SAVE_ROOT = None
 
 # data augmentation
 transform = transforms.Compose([           
@@ -157,7 +159,7 @@ def get_posed_mesh(betas, pose, transl, debug=False):
                   'expression': torch.zeros((1, 10)).float(),
                   'left_hand_pose': torch.zeros((1, 45)).float(),
                   'right_hand_pose': torch.zeros((1, 45)).float()}
-    body_model = SMPL2('Path/to/GraphiContact/src/smpl/')
+    body_model = SMPL2('GraphiContact/src/smpl/')
     smpl_output = body_model(betas=betas.reshape(1,-1),
                                   body_pose=pose[ 3:].reshape(1,-1),
                                   global_orient=pose[ :3].reshape(1,-1),
@@ -197,7 +199,7 @@ def paint_contact(pred_contact):
 
     # get pred_rgb colors
     pred_vert_rgb = torch.bmm(pred_contact, colors)
-    body_model = SMPL2('Path/to/GraphiContact/src/smpl/')
+    body_model = SMPL2('GraphiContact/src/smpl/')
     body_faces = torch.LongTensor(body_model.faces.astype(np.int32))
     pred_face_rgb = pred_vert_rgb[:, body_faces, :][:, :, 0, :] # take the first vertex color
     pred_face_texture = torch.zeros((bs, body_faces.shape[0], 1, 1, 3), dtype=torch.float32)
@@ -220,7 +222,7 @@ def render_batch(smpl_verts, cam_k, img_scale_factor, vertex_colors=None, face_t
     focal_length = torch.stack([focal_length_x, focal_length_y], dim=1)
 
     # Setup renderer
-    body_model = SMPL2('Path/to/GraphiContact/src/smpl/')
+    body_model = SMPL2('GraphiContact/src/smpl/')
     body_faces = torch.LongTensor(body_model.faces.astype(np.int32))
     renderer = Pytorch3D(img_h=img_h,
                               img_w=img_w,
@@ -305,7 +307,7 @@ def get_earthmesh(trans, rotation):
             if not exists(dest):
                 wget(url, dest)
 
-        fname = join('Path/to/GraphiContact/src/tools/', 'nasa_earth.obj')
+        fname = join('GraphiContact/src/tools/', 'nasa_earth.obj')
         mesh = load_mesh(fname)
 
         mesh.v = np.asarray(mesh.v, order='C')
@@ -380,12 +382,17 @@ def preprocess_image(img_path, json_path=None):
     return crop, proc_param, img
 
 def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
+    global SAVE_ROOT
     # switch to evaluate mode
     Graphormer_model.eval()
     smpl.eval()
     with torch.no_grad():
         for image_file in image_list:
             if 'pred' not in image_file:
+                # start_time = time.time()
+                sub_dir = image_file[:-4].split('/')[-1]
+                save_dir = os.path.join(SAVE_ROOT, sub_dir)
+                os.makedirs(save_dir, exist_ok=True)   
                 att_all = []
                 img = Image.open(image_file)
                 img_tensor = transform(img)
@@ -402,7 +409,8 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
                 temp_fname = image_file[:-4]
                 import numpy as np
                 # store 3d points
-                np.save(os.path.join('Path/to/GraphiContact/src/tools',f"2_pred_con_ver"),pred_contact_ver_np)
+                # np.save(os.path.join('GraphiContact/src/tools',f"2_pred_con_ver"),pred_contact_ver_np)
+                np.save(os.path.join(save_dir,f"2_pred_con_ver"),pred_contact_ver_np)
                 print(pred_camera.size())
                 # copy the camera parameters again
                 pred_camera1 = copy.deepcopy(pred_camera)
@@ -419,7 +427,8 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
                 # breakpoint()
                 pred_vertices = pred_vertices - pred_3d_pelvis[:, None, :]
                 pred_vertices_np = pred_vertices.cpu().numpy()
-                np.save(os.path.join('Path/to/GraphiContact/src/tools',f"2_pred_ver"),pred_vertices_np)
+                # np.save(os.path.join('GraphiContact/src/tools',f"2_pred_ver"),pred_vertices_np)
+                np.save(os.path.join(save_dir,f"2_pred_ver"),pred_vertices_np)
                 pred_labels = pred_vertices * torch.tensor(label).unsqueeze(dim=2).cuda()
 
                 ver = pred_vertices.cpu().numpy()[0]
@@ -443,7 +452,7 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
 
 
                          
-                smpl_path = os.path.join('Path/to/GraphiContact/src/tools', 'smpl_neutral_tpose.ply')
+                smpl_path = os.path.join('GraphiContact/src/tools', 'smpl_neutral_tpose.ply')
                 cont = pred_contact_ver.detach().cpu().numpy().squeeze()
                 cont_smpl = []
                 for indx, i in enumerate(cont):
@@ -474,15 +483,16 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
                 part_mask_pred = part_mask_pred.detach().cpu().numpy()
 
                                         
-                out_dir = os.path.join('Path/to/GraphiContact/src/tools', 'Preds', os.path.basename(image_file).split('.')[0])
+                # out_dir = os.path.join('GraphiContact/src/tools', 'Preds', os.path.basename(image_file).split('.')[0])
+                out_dir = os.path.join(save_dir, 'Preds')
                 os.makedirs(out_dir, exist_ok=True)          
 
                 # logger.info(f'Saving mesh to {out_dir}')
                 # shutil.copyfile(img_name, os.path.join(out_dir, os.path.basename(img_name)))
                 # body_model_smpl.export(os.path.join(out_dir, 'pred.obj'))
 
-                data_path='Path/to/GraphiContact/HOT-Annotated/images'
-                label_path='Path/to/GraphiContact/HOT-Annotated/Release_Datasets/damon/hot_dca_trainval.npz'
+                data_path='GraphiContact/HOT-Annotated/images'
+                label_path='GraphiContact/HOT-Annotated/Release_Datasets/damon/hot_dca_trainval.npz'
                 org_img_paths = os.listdir(data_path)
                 # org_img_paths = [os.path.join(data_path, path) for path in org_img_paths]
                 train_label = np.load(label_path)
@@ -515,8 +525,10 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
 
                 rend1 = create_scene(body_model_smpl, img)
                 
-                os.makedirs(os.path.join('Path/to/GraphiContact/src/tools', 'Renders'), exist_ok=True) 
-                rend1.save(os.path.join('Path/to/GraphiContact/src/tools', 'Renders', '2' + '.png'))
+                # os.makedirs(os.path.join('GraphiContact/src/tools', 'Renders'), exist_ok=True) 
+                # rend1.save(os.path.join('GraphiContact/src/tools', 'Renders', '2' + '.png'))
+                os.makedirs(os.path.join(save_dir, 'Renders'), exist_ok=True) 
+                rend1.save(os.path.join(save_dir, 'Renders', '2' + '.png'))
 
 
                 
@@ -527,9 +539,9 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
 
                 img_scale_factor = np.array([256 / img_w, 256 / img_h])
 
-                seg_path='Path/to/GraphiContact/HOT-Annotated/segments'
-                seg_path='Path/to/GraphiContact/datasets/Damon_Scene/damon_segmentations/segmentation_masks/training'
-                part_path='Path/to/GraphiContact/datasets/Damon_Scene/damon_segmentations/parts/training'
+                seg_path='GraphiContact/HOT-Annotated/segments'
+                seg_path='GraphiContact/datasets/Damon_Scene/damon_segmentations/segmentation_masks/training'
+                part_path='GraphiContact/datasets/Damon_Scene/damon_segmentations/parts/training'
                 seg_imgs_names = train_label['scene_seg'][tr_idx]
                 part_imgs_names = train_label['part_seg'][tr_idx]
 
@@ -566,7 +578,8 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
 
                 pred_vertices = smpl_verts.cpu().numpy() - pred_3d_pelvis[:, None, :].cpu().numpy()
                 pred_vertices_np = pred_vertices
-                np.save(os.path.join('Path/to/GraphiContact/src/tools',"2_pred_ver"),pred_vertices_np)
+                # np.save(os.path.join('GraphiContact/src/tools',"2_pred_ver"),pred_vertices_np)
+                np.save(os.path.join(save_dir,"2_pred_ver"),pred_vertices_np)
 
                 
                 front_view = render_batch(smpl_verts, cam_k, img_scale_factor, vertex_colors, face_textures)
@@ -574,7 +587,8 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
                 
                 contact_2d_pred_rgb = front_view_rgb.detach().cpu().numpy()
                 rend2 = gen_render(img, cont, contact_2d_pred_rgb, img2, img3)
-                rend2.save(os.path.join('Path/to/GraphiContact/src/tools', 'Renders', '2' + 'sence.png'))
+                # rend2.save(os.path.join('GraphiContact/src/tools', 'Renders', '2' + 'sence.png'))
+                rend2.save(os.path.join(save_dir, 'Renders', '2' + 'sence.png'))
 
                 # visual_imgs_output = visualize_mesh_and_attention( renderer, batch_visual_imgs[0],
                 #                                             pred_vertices[0].detach(), 
@@ -585,7 +599,7 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
                 #                                             att[-1][0].detach())
 
                 # visual_imgs_output = torch.tensor(visual_imgs_output.transpose(1,2,0))
-                body_model = SMPL2('Path/to/GraphiContact/src/smpl/')
+                body_model = SMPL2('GraphiContact/src/smpl/')
                 
                 body_faces = torch.LongTensor(body_model.faces.astype(np.int32))
                 renderer = Renderer2(faces=body_model.faces.reshape([ 13776, 3]))
@@ -619,12 +633,17 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
                 pred_labels = torch.tensor(pred_vertices).cuda() * torch.tensor(label).unsqueeze(dim=2).cuda()
                 print('cam',pred_camera1.shape)
                 print(cam_k.shape)
+                start_time = time.time()
                 visual_imgs_output = visualize_mesh( renderer, img_visual.detach().numpy()[0],
                                                                 smpl_verts[0].numpy(), 
-                                                                cam_k[0],color=colors)
-                np.save(os.path.join('Path/to/GraphiContact/src/tools',"colors"),colors)
-                np.save(os.path.join('Path/to/GraphiContact/src/tools',"pred_vertices"),smpl_verts)
-                np.save(os.path.join('Path/to/GraphiContact/src/tools',"pred_camera1"),cam_k.cpu().numpy())
+                                                                cam_k[0],color=colors,
+                                                                save_dir=save_dir,)
+                # np.save(os.path.join('GraphiContact/src/tools',"colors"),colors)
+                # np.save(os.path.join('GraphiContact/src/tools',"pred_vertices"),smpl_verts)
+                # np.save(os.path.join('GraphiContact/src/tools',"pred_camera1"),cam_k.cpu().numpy())
+                np.save(os.path.join(save_dir,"colors"),colors)
+                np.save(os.path.join(save_dir,"pred_vertices"),smpl_verts)
+                np.save(os.path.join(save_dir,"pred_camera1"),cam_k.cpu().numpy())
                 # cam_for_render, vert_shifted, joints_orig = vis_util.get_original(
                 #     proc_param, pred_vertices, cam_k[0].cpu(), smpl_joints, img_size=img.shape[:2])
                 # rend_img_overlay = renderer(
@@ -634,10 +653,14 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
                 visual_imgs = np.asarray(visual_imgs).transpose(1,2,0)
                 # print(visual_imgs)
                 print(image_file[:-4])
-                temp_fname = 'Path/to/GraphiContact/src/tools/' + image_file[:-4].split('/')[-1] + '_deco_pred.jpg'
-                print('save to ', temp_fname)
+                # temp_fname = 'GraphiContact/src/tools/' + image_file[:-4].split('/')[-1] + '_deco_pred.jpg'
+                temp_fname = save_dir + image_file[:-4].split('/')[-1] + '_deco_pred.jpg'
+                # print('save to ', temp_fname)
                 
-                cv2.imwrite(temp_fname, np.asarray(visual_imgs[:,:,::-1]*255))
+                # cv2.imwrite(temp_fname, np.asarray(visual_imgs[:,:,::-1]*255))
+                stop_time = time.time()
+                interval = stop_time - start_time
+                print(f'current interval: {interval}')
                 import open3d as o3d
 
 
@@ -665,7 +688,7 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
                 # mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
                         # pcd,
                         # o3d.utility.DoubleVector([radius, radius * 2]))
-                # o3d.io.write_triangle_mesh("Path/to/GraphiContact/src/tools/output_mesh.ply", mesh)
+                # o3d.io.write_triangle_mesh("GraphiContact/src/tools/output_mesh.ply", mesh)
                 
 
                 from opendr.renderer import ColoredRenderer
@@ -674,7 +697,10 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
 
                 # import matplotlib.pyplot as plt
                 # cv2.imwrite(temp_fname, np.asarray(rn.r[:,:,::-1]*255))
-                break
+                # stop_time = time.time()
+                # interval = stop_time - start_time
+                # print(f'current interval: {interval}')
+                # break
                 
 
     return 
@@ -682,7 +708,8 @@ def run_inference(args, image_list, Graphormer_model, smpl, mesh_sampler):
 def visualize_mesh( renderer, images,
                     pred_vertices_full,
                     pred_camera,
-                    color='light_blue'):
+                    color='light_blue',
+                    save_dir=None,):
     img = images.transpose(1,2,0)
     # Get predict vertices for the particular example
     vertices_full = pred_vertices_full
@@ -692,7 +719,7 @@ def visualize_mesh( renderer, images,
     # print(cam)
     # breakpoint()
     # Visualize only mesh reconstruction 
-    rend_img = visualize_reconstruction_no_text_new(img, 256, vertices_full, cam, renderer, color=color)
+    rend_img = visualize_reconstruction_no_text_new(img, 256, vertices_full, cam, renderer, color=color, save_root=save_dir)
 
     rend_img = rend_img.transpose(2,0,1)
     return rend_img
@@ -731,19 +758,19 @@ def parse_args():
                         help="Workers in dataloader.")
     parser.add_argument("--img_scale_factor", default=1, type=int, 
                         help="adjust image resolution.")
-    parser.add_argument("--image_file_or_path", default='Path/to/GraphiContact/samples/human-body_deco', type=str, 
+    parser.add_argument("--image_file_or_path", default='GraphiContact/samples/human-body_deco', type=str, 
                         help="test data") 
-    parser.add_argument("--input_path", default='Path/to/GraphiContact/samples/human-body_deco', type=str, 
+    parser.add_argument("--input_path", default='GraphiContact/samples/human-body_deco', type=str, 
                         help="test data") 
     #########################################################
     # Loading/saving checkpoints
     #########################################################
-    parser.add_argument("--model_name_or_path", default='Path/to/GraphiContact/src/modeling/bert/bert-base-uncased', type=str, required=False,
+    parser.add_argument("--model_name_or_path", default='GraphiContact/src/modeling/bert/bert-base-uncased', type=str, required=False,
                         help="Path to pre-trained transformer model or model type.")
     # metamodel./models/graphormer_release/graphormer_3dpw_state_dict.bin
-    parser.add_argument("--resume_checkpoint", default='Path/to/GraphiContact/models/graphormer_release/graphormer_3dpw_state_dict.bin', type=str, required=False,
+    parser.add_argument("--resume_checkpoint", default='GraphiContact/models/graphormer_release/graphormer_3dpw_state_dict.bin', type=str, required=False,
                         help="Path to specific checkpoint for resume training.")
-    parser.add_argument("--deco_resume_checkpoint", default='Path/to/GraphiContact/ckpt/deco_grph_damon.pt', type=str, required=False,
+    parser.add_argument("--deco_resume_checkpoint", default='GraphiContact/ckpt/deco_grph_damon.pt', type=str, required=False,
                         help="Path to specific checkpoint for resume training.")
     parser.add_argument("--output_dir", default='output/', type=str, required=False,
                         help="The output directory to save checkpoint and test results.")
@@ -779,6 +806,8 @@ def parse_args():
                         help="cuda or cpu")
     parser.add_argument('--seed', type=int, default=88, 
                         help="random seed for initialization.")
+    parser.add_argument('--save_root', type=str, default='/data3/liyang/Proj/GraphiContact/GraphiContact/save/', 
+                        help="save root")
 
     args = parser.parse_args()
     return args
@@ -862,14 +891,14 @@ def main(args):
 
         # init ImageNet pre-trained backbone model
         if args.arch=='hrnet':
-            hrnet_yaml = 'Path/to/GraphiContact/models/hrnet/cls_hrnet_w40_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
-            hrnet_checkpoint = 'Path/to/GraphiContact/models/hrnet/hrnetv2_w40_imagenet_pretrained.pth'
+            hrnet_yaml = 'GraphiContact/models/hrnet/cls_hrnet_w40_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
+            hrnet_checkpoint = 'GraphiContact/models/hrnet/hrnetv2_w40_imagenet_pretrained.pth'
             hrnet_update_config(hrnet_config, hrnet_yaml)
             backbone = get_cls_net_gridfeat(hrnet_config, pretrained=hrnet_checkpoint)
             logger.info('=> loading hrnet-v2-w40 model')
         elif args.arch=='hrnet-w64':
-            hrnet_yaml = 'Path/to/GraphiContact/models/hrnet/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
-            hrnet_checkpoint = 'Path/to/GraphiContact/models/hrnet/hrnetv2_w64_imagenet_pretrained.pth'
+            hrnet_yaml = 'GraphiContact/models/hrnet/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
+            hrnet_checkpoint = 'GraphiContact/models/hrnet/hrnetv2_w64_imagenet_pretrained.pth'
             hrnet_update_config(hrnet_config, hrnet_yaml)
             backbone = get_cls_net_gridfeat(hrnet_config, pretrained=hrnet_checkpoint)
             logger.info('=> loading hrnet-v2-w64 model')
@@ -937,4 +966,5 @@ def main(args):
 
 if __name__ == "__main__":
     args = parse_args()
+    SAVE_ROOT = args.save_root
     main(args)

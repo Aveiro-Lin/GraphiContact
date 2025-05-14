@@ -1,9 +1,11 @@
-CUDA_VISIBLE_DEVICES=1 python src/tools/train_deco_contact_damon.py
+CURRENT_DIR=$(cd $(dirname $0); pwd)
+echo "CURRENT_DIR: "$CURRENT_DIR
+CUDA_VISIBLE_DEVICES=1 python $CURRENT_DIR/src/tools/train_graphi_contact_damon.py
 
-# The above instructions do not include using the SMM architecture. If you want to use the SMM Architecture, please use the following command:
+# The above instructions do not include using the SIMU architecture. If you want to use the SIMU Architecture, please use the following command:
 
-# python src/tools/train_deco_contact_damon_smm.py --n_infers n
+# python $CURRENT_DIR/src/tools/train_graphi_contact_damon_SIMU.py --n_infers n
 
 # Here, "n" refers to the number of parallel streams. For example, if the optimal number of streams mentioned in the paper is N=4, the training command would look like this:
 
-# python src/tools/train_deco_contact_damon_smm.py --n_infers 4
+# python $CURRENT_DIR/src/tools/train_graphi_contact_damon_SIMU.py --n_infers 4

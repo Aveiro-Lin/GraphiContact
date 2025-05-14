@@ -21,7 +21,7 @@ import gc
 import numpy as np
 import cv2
 import sys
-sys.path.append('/Path/to/GraphiContact')
+sys.path.append('/data3/liyang/Proj/GraphiContact/')
 from src.modeling.bert import BertConfig, Graphormer
 from src.modeling.bert import Graphormer_Body_Network as Graphormer_Network
 from src.modeling._smpl import SMPL, Mesh
@@ -42,6 +42,8 @@ import copy
 from PIL import Image
 from torchvision import transforms
 
+SAVE_ROOT = None
+
 # data augmentation
 transform = transforms.Compose([           
                     transforms.Resize(224),
@@ -58,6 +60,7 @@ transform_visualize = transforms.Compose([
                     transforms.ToTensor()])
 
 def run_inference(args, image_list, Graphormer_model, smpl, renderer, mesh_sampler):
+    global SAVE_ROOT
     # switch to evaluate mode
     Graphormer_model.eval()
     smpl.eval()
@@ -76,7 +79,11 @@ def run_inference(args, image_list, Graphormer_model, smpl, renderer, mesh_sampl
                 pred_contact_ver_np = pred_contact_ver.cpu().numpy()
                 temp_fname = image_file[:-4]
                 # store 3d points
-                np.save(f"{temp_fname}_pred_con_ver",pred_contact_ver_np)
+                sub_dir = image_file[:-4].split('/')[-1]
+                save_dir = os.path.join(SAVE_ROOT, sub_dir)
+                os.makedirs(save_dir, exist_ok=True)
+                # np.save(f"{temp_fname}_pred_con_ver",pred_contact_ver_np)
+                np.save(os.path.join(save_dir,f"pred_con_ver"),pred_contact_ver_np)
                 print(pred_camera.size())
                 # Copy the camera parameters again
                 pred_camera1 = copy.deepcopy(pred_camera)
@@ -93,7 +100,8 @@ def run_inference(args, image_list, Graphormer_model, smpl, renderer, mesh_sampl
                 # breakpoint()
                 pred_vertices = pred_vertices - pred_3d_pelvis[:, None, :]
                 pred_vertices_np = pred_vertices.cpu().numpy()
-                np.save(f"{temp_fname}_pred_ver",pred_vertices_np)
+                # np.save(f"{temp_fname}_pred_ver",pred_vertices_np)
+                np.save(os.path.join(save_dir,f"pred_ver"),pred_vertices_np)
                 pred_labels = pred_vertices * torch.tensor(label).unsqueeze(dim=2).cuda()
                 # save attantion
                 # att_max_value = att[-1]
@@ -108,7 +116,8 @@ def run_inference(args, image_list, Graphormer_model, smpl, renderer, mesh_sampl
                 # pred_2d_431_vertices_from_smpl = orthographic_projection(pred_vertices_sub2, pred_camera)
                 visual_imgs_output = visualize_mesh( renderer, batch_visual_imgs[0],
                                                                 pred_vertices[0].detach(), 
-                                                                pred_camera.detach())
+                                                                pred_camera.detach(),
+                                                                save_dir=save_dir,)
                 # visual_imgs_output = visualize_mesh_and_attention( renderer, batch_visual_imgs[0],
                 #                                             pred_vertices[0].detach(), 
                 #                                             pred_vertices_sub2[0].detach(), 
@@ -125,7 +134,8 @@ def run_inference(args, image_list, Graphormer_model, smpl, renderer, mesh_sampl
                 visual_imgs = visual_imgs_output.transpose(1,2,0)
                 visual_imgs = np.asarray(visual_imgs)
                         
-                temp_fname = image_file[:-4] + '_graphormer_pred.jpg'
+                # temp_fname = image_file[:-4] + '_graphormer_pred.jpg'
+                temp_fname = os.path.join(save_dir, 'graphormer_pred.jpg')
                 print('save to ', temp_fname)
                 cv2.imwrite(temp_fname, np.asarray(visual_imgs[:,:,::-1]*255))
 ###########################################################################################
@@ -137,12 +147,14 @@ def run_inference(args, image_list, Graphormer_model, smpl, renderer, mesh_sampl
                 visual_imgs_output = visualize_mesh( renderer, batch_visual_imgs[0],
                                                                 pred_labels[0].detach(), 
                                                                 pred_camera1.detach(),
-                                                                color='pink')
+                                                                color='pink',
+                                                                save_dir=save_dir,)
                 
                 visual_imgs = visual_imgs_output.transpose(1,2,0)
                 visual_imgs = np.asarray(visual_imgs)
                         
-                temp_fname = image_file[:-4] + '_deco_pred.jpg'
+                # temp_fname = image_file[:-4] + '_deco_pred.jpg'
+                temp_fname = os.path.join(save_dir, 'deco_pred.jpg')
                 print('save to ', temp_fname)
                 new_background_img = visual_imgs[:,:,::-1]*255
                 cv2.imwrite(temp_fname, np.asarray(visual_imgs[:,:,::-1]*255))
@@ -152,7 +164,8 @@ def run_inference(args, image_list, Graphormer_model, smpl, renderer, mesh_sampl
 def visualize_mesh( renderer, images,
                     pred_vertices_full,
                     pred_camera,
-                    color='light_blue'):
+                    color='light_blue',
+                    save_dir=None,):
     img = images.cpu().numpy().transpose(1,2,0)
     # Get predict vertices for the particular example
     vertices_full = pred_vertices_full.cpu().numpy() 
@@ -161,7 +174,7 @@ def visualize_mesh( renderer, images,
     cam = pred_camera.cpu().numpy()
     # breakpoint()
     # Visualize only mesh reconstruction 
-    rend_img = visualize_reconstruction_no_text_new(img, 224, vertices_full, cam, renderer, color=color)
+    rend_img = visualize_reconstruction_no_text_new(img, 224, vertices_full, cam, renderer, color=color, save_root=save_dir)
 
     rend_img = rend_img.transpose(2,0,1)
     return rend_img
@@ -199,17 +212,17 @@ def parse_args():
                         help="Workers in dataloader.")
     parser.add_argument("--img_scale_factor", default=1, type=int, 
                         help="adjust image resolution.")
-    parser.add_argument("--image_file_or_path", default='/Path/to/GraphiContact/samples/human-body_deco', type=str, 
+    parser.add_argument("--image_file_or_path", default='GraphiContact/samples/human-body_deco', type=str, 
                         help="test data") 
     #########################################################
     # Loading/saving checkpoints
     #########################################################
-    parser.add_argument("--model_name_or_path", default='/Path/to/GraphiContact/src/modeling/bert/bert-base-uncased', type=str, required=False,
+    parser.add_argument("--model_name_or_path", default='GraphiContact/src/modeling/bert/bert-base-uncased', type=str, required=False,
                         help="Path to pre-trained transformer model or model type.")
     #Metamodel./models/graphormer_release/graphormer_3dpw_state_dict.bin
-    parser.add_argument("--resume_checkpoint", default='/Path/to/GraphiContact/models/graphormer_release/graphormer_3dpw_state_dict.bin', type=str, required=False,
+    parser.add_argument("--resume_checkpoint", default='GraphiContact/models/graphormer_release/graphormer_3dpw_state_dict.bin', type=str, required=False,
                         help="Path to specific checkpoint for resume training.")
-    parser.add_argument("--deco_resume_checkpoint", default='/Path/to/GraphiContact/ckpt/deco_grph_behave.pt', type=str, required=False,
+    parser.add_argument("--deco_resume_checkpoint", default='GraphiContact/ckpt/deco_grph_behave.pt', type=str, required=False,
                         help="Path to specific checkpoint for resume training.")
     parser.add_argument("--output_dir", default='output/', type=str, required=False,
                         help="The output directory to save checkpoint and test results.")
@@ -245,6 +258,8 @@ def parse_args():
                         help="cuda or cpu")
     parser.add_argument('--seed', type=int, default=88, 
                         help="random seed for initialization.")
+    parser.add_argument('--save_root', type=str, default='/data3/liyang/Proj/GraphiContact/GraphiContact/save/', 
+                        help="save root")
 
     args = parser.parse_args()
     return args
@@ -327,14 +342,14 @@ def main(args):
 
         # init ImageNet pre-trained backbone model
         if args.arch=='hrnet':
-            hrnet_yaml = '/Path/to/GraphiContact/models/hrnet/cls_hrnet_w40_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
-            hrnet_checkpoint = '/Path/to/GraphiContact/models/hrnet/hrnetv2_w40_imagenet_pretrained.pth'
+            hrnet_yaml = 'GraphiContact/models/hrnet/cls_hrnet_w40_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
+            hrnet_checkpoint = 'GraphiContact/models/hrnet/hrnetv2_w40_imagenet_pretrained.pth'
             hrnet_update_config(hrnet_config, hrnet_yaml)
             backbone = get_cls_net_gridfeat(hrnet_config, pretrained=hrnet_checkpoint)
             logger.info('=> loading hrnet-v2-w40 model')
         elif args.arch=='hrnet-w64':
-            hrnet_yaml = '/Path/to/GraphiContact/models/hrnet/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
-            hrnet_checkpoint = '/Path/to/GraphiContact/models/hrnet/hrnetv2_w64_imagenet_pretrained.pth'
+            hrnet_yaml = 'GraphiContact/models/hrnet/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
+            hrnet_checkpoint = 'GraphiContact/models/hrnet/hrnetv2_w64_imagenet_pretrained.pth'
             hrnet_update_config(hrnet_config, hrnet_yaml)
             backbone = get_cls_net_gridfeat(hrnet_config, pretrained=hrnet_checkpoint)
             logger.info('=> loading hrnet-v2-w64 model')
@@ -402,4 +417,5 @@ def main(args):
 
 if __name__ == "__main__":
     args = parse_args()
+    SAVE_ROOT = args.save_root
     main(args)

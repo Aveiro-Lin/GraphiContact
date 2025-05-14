@@ -6,9 +6,9 @@ import code
 import json
 import time
 import datetime
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7" 
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"  
 import sys
-sys.path.append('Path/to/GraphiContact')
+sys.path.append('/data3/liyang/Proj/GraphiContact/GraphiContact')
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -20,11 +20,12 @@ device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 import gc
 import numpy as np
+
 import cv2
 from src.modeling.bert import BertConfig, Graphormer
 from src.modeling.bert import Graphormer_Body_Network as Graphormer_Network
-# from src_backup.modeling.bert import Graphormer_Body_Network_1 as Graphormer_Network_1
-# from src_backup.modeling.bert import Graphormer_Body_Network_2 as Graphormer_Network_2
+# from src.modeling.bert import Graphormer_Body_Network_1 as Graphormer_Network_1
+# from src.modeling.bert import Graphormer_Body_Network_2 as Graphormer_Network_2
 from src.modeling._smpl import SMPL, Mesh
 from torch.optim.lr_scheduler import MultiStepLR
 from src.modeling.hrnet.hrnet_cls_net_gridfeat import get_cls_net_gridfeat
@@ -37,12 +38,12 @@ from src.utils.logger import setup_logger
 from src.utils.comm import synchronize, is_main_process, get_rank, get_world_size, all_gather
 from src.utils.miscellaneous import mkdir, set_seed
 from src.utils.metric_logger import AverageMeter, EvalMetricsLogger
-#from src_backup.utils.renderer import Renderer, visualize_reconstruction_and_att_local, visualize_reconstruction_no_text
+#from src.utils.renderer import Renderer, visualize_reconstruction_and_att_local, visualize_reconstruction_no_text
 from src.utils.metric_pampjpe import reconstruction_error
 from src.utils.geometric_layers import orthographic_projection
 from PIL import Image
 from torchvision import transforms
-from src.utils.evaluator_behave import evaluator
+from src.utils.evaluator import Evaluator
 
 transform = transforms.Compose([           
                     transforms.Resize(224),
@@ -74,16 +75,16 @@ def parse_args():
     #########################################################
     # Loading/saving checkpoints
     #########################################################
-    parser.add_argument("--model_name_or_path", default='Path/to/GraphiContact/src/modeling/bert/bert-base-uncased', type=str, required=False,
+    parser.add_argument("--model_name_or_path", default='src/modeling/bert/bert-base-uncased', type=str, required=False,
                         help="Path to pre-trained transformer model or model type.")
     # Fill in the checkpoint here; you can use the original checkpoint or the checkpoint from training. The original is ./models/graphormer_release/graphormer_3dpw_state_dict.bin, and the new one is /home/linxj/project/MeshGraphormer/ckpt/deco_grph.pt.
-    parser.add_argument("--resume_checkpoint", default='Path/to/GraphiContact/models/graphormer_release/graphormer_3dpw_state_dict.bin', type=str, required=False,
+    parser.add_argument("--resume_checkpoint", default='models/graphormer_release/graphormer_3dpw_state_dict.bin', type=str, required=False,
                         help="Path to specific checkpoint for resume training.")
-    parser.add_argument("--resume_checkpoint2", default='Path/to/GraphiContact/models/graphormer_release/graphormer_h36m_state_dict.bin', type=str, required=False,
+    parser.add_argument("--resume_checkpoint2", default='models/graphormer_release/graphormer_h36m_state_dict.bin', type=str, required=False,
                         help="Path to specific checkpoint for resume training.")
     parser.add_argument("--config_name", default="", type=str, 
                         help="Pretrained config name or path if not the same as model_name.")
-    parser.add_argument("--output_dir", default='Path/to/GraphiContact/ckpt', type=str, required=False,
+    parser.add_argument("--output_dir", default='ckpt', type=str, required=False,
                         help="The output directory to save checkpoint and test results.")
     #########################################################
     # Model architectures
@@ -118,13 +119,16 @@ def parse_args():
     #########################################################
     # Here are some hyperparameters that need to be set for training.
     #########################################################
-    parser.add_argument("--lr", default=5e-5) 
-    # parser.add_argument("--lr", default=8e-3) 
+    # parser.add_argument("--lr", default=5e-5) 
+    parser.add_argument("--lr", default=8e-3) 
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_epochs", type=int, default=2000)
+
+    parser.add_argument("--start_early_stopping", default=False) 
     
     args = parser.parse_args()
     return args
+
 
 
 def main(args):
@@ -163,6 +167,7 @@ def main(args):
     # print(_model.contact_parameters)
     scheduler = MultiStepLR(optimizer, milestones=[40, 80], gamma=0.1)
     
+    evaluator = Evaluator()
     if args.run_eval_only:
         all_pred = []
         all_gt = []
@@ -172,9 +177,11 @@ def main(args):
                             batch=batch, optimizer=optimizer, loss_fn=loss_fn, dev=dev)
             all_pred.append(pred_ana)
             all_gt.append(ana_tensor)
-        pre, rec, f1, fp_geo_err, fn_geo_err = evaluator(all_pred, all_gt)
+        pre, rec, f1, fp_geo_err, fn_geo_err, _ = evaluator(all_pred, all_gt)
         print('pre:', pre.cpu().numpy(), 'rec:', rec.cpu().numpy(), "f1:", f1.cpu().numpy(), 'fp_geo_err:', fp_geo_err.cpu().numpy(), 'fn_geo_err:', fn_geo_err.cpu().numpy())
         
+    evaluator = Evaluator(start_early_stopping=args.start_early_stopping)
+    # for i in range(9):
     for i in range(100):
         train_data = prepare_dataset(batch_size)
         for idx, batch in enumerate(train_data):
@@ -206,7 +213,7 @@ def main(args):
                 print('??')
                 continue
 
-        if (i+1) % 1 == 0:
+        if (i) % 1 == 0:
             print(i)
             all_pred = []
             all_gt = []
@@ -219,7 +226,7 @@ def main(args):
                 pred_ana, pred_ana2, ana_tensor  = test_batch(model=_model, smpl=smpl, mesh_sampler=mesh_sampler,
                                 batch=batch, optimizer=optimizer, loss_fn=loss_fn, dev=dev)
                 
-                
+                                
                 # org_img_batch, ana_contact_batch = batch
                 # #if len(org_img_batch) >= 1:
                 # org_img_arry = [transform(Image.open(image_file)) for image_file in org_img_batch]
@@ -231,8 +238,8 @@ def main(args):
                 
                 all_pred2.append(pred_ana.cpu().numpy())
                 all_pred3.append(pred_ana2.cpu().numpy())
-                #pred_ana = pred_ana * 0.44 + pred_ana2 * 0.43
-                pred_ana[pred_ana < 0.59] = 0
+                #pred_ana = pred_ana*0.58 + pred_ana2*0.57
+                pred_ana[pred_ana  >0.45] = 1
                 all_pred.append(pred_ana)
                 
                 all_gt.append(ana_tensor)
@@ -240,22 +247,40 @@ def main(args):
                 all_gt2.append(ana_tensor.cpu().numpy())
             
 
-            pre, rec, f1, fp_geo_err, fn_geo_err = evaluator(all_pred, all_gt)
+            pre, rec, f1, fp_geo_err, fn_geo_err, early_stop = evaluator(all_pred, all_gt)
             print('pre:', pre.cpu().numpy(), 'rec:', rec.cpu().numpy(), "f1:", f1.cpu().numpy(), 'fp_geo_err:', fp_geo_err.cpu().numpy(), 'fn_geo_err:', fn_geo_err.cpu().numpy())
 
-            torch.save(_model.state_dict(), 'Path/to/GraphiContact/ckpt/deco_grph_behave.pt')
+            if early_stop:
+                print(f'early stop!!!')
+                break
+
+            torch.save(_model.state_dict(), 'ckpt/deco_grph_damon.pt')
+
+
+def mask_split(img, num_parts):
+    if not len(img.shape) == 2:
+        img = img[:, :, 0]
+    mask = np.zeros((img.shape[0], img.shape[1], num_parts))
+    for i in np.unique(img):
+        mask[:, :, i] = np.where(img == i, 1., 0.)
+    return np.transpose(mask, (2, 0, 1))
         
 # train function
 def train_batch(model, smpl, mesh_sampler, batch, optimizer, scheduler, loss_fn, dev='cuda'):
-    org_img_batch, ana_contact_batch = batch
+    org_img_batch, seg_batch, part_batch, ana_contact_batch = batch
     if len(org_img_batch) >= 1:
         
         org_img_arry = [transform(Image.open(image_file)) for image_file in org_img_batch]
+        org_seg_arry = [mask_split(cv2.resize(cv2.imread(image_file), (224, 224), cv2.INTER_CUBIC), 133) for image_file in seg_batch]
+        org_part_arry = [mask_split(cv2.resize(cv2.imread(image_file), (224, 224), cv2.INTER_CUBIC), 26) for image_file in part_batch]
 
+        seg_tensor = torch.tensor(org_seg_arry, dtype=torch.float32)
+        part_tensor = torch.tensor(org_part_arry, dtype=torch.float32)
+ 
         org_tensor = torch.tensor([item.cpu().detach().numpy() for item in org_img_arry]).float()
         ana_tensor = torch.tensor(ana_contact_batch).float()
      
-        _, _, _, _, _, pred_ana, pred_ana2 = model(org_tensor.to(dev), smpl, mesh_sampler)
+        _, _, seg_pred, part_pred, _, pred_ana, pred_ana2 = model(org_tensor.to(dev), smpl, mesh_sampler)
         # print(sum(pred_ana))
         # print(sum(ana_tensor))
         
@@ -264,6 +289,8 @@ def train_batch(model, smpl, mesh_sampler, batch, optimizer, scheduler, loss_fn,
         loss = 0
         loss += loss_fn(pred_ana, ana_tensor.to(dev))
         loss += loss_fn(pred_ana2, ana_tensor.to(dev)) * 0.1
+        loss += loss_fn(seg_pred, seg_tensor.to(dev))
+        loss += loss_fn(part_pred, part_tensor.to(dev))
         
         
         
@@ -279,50 +306,210 @@ def train_batch(model, smpl, mesh_sampler, batch, optimizer, scheduler, loss_fn,
 # test function
 @torch.no_grad()
 def test_batch(model, smpl, mesh_sampler, batch, optimizer, loss_fn, dev='cuda'):
-    org_img_batch, ana_contact_batch = batch
+    org_img_batch, seg_batch, part_batch, ana_contact_batch = batch
     #if len(org_img_batch) >= 1:
+
     org_img_arry = [transform(Image.open(image_file)) for image_file in org_img_batch]
+    org_seg_arry = [mask_split(cv2.resize(cv2.imread(image_file), (224, 224), cv2.INTER_CUBIC), 133) for image_file in seg_batch]
+    org_part_arry = [mask_split(cv2.resize(cv2.imread(image_file), (224, 224), cv2.INTER_CUBIC), 26) for image_file in part_batch]
+
+    seg_tensor = torch.tensor(org_seg_arry, dtype=torch.float32)
+    part_tensor = torch.tensor(org_part_arry, dtype=torch.float32)
 
     org_tensor = torch.tensor([item.cpu().detach().numpy() for item in org_img_arry]).float()
     ana_tensor = torch.tensor(ana_contact_batch).float()
+    
+    _, _, seg_pred, part_pred, _, pred_ana, pred_ana2 = model(org_tensor.to(dev), smpl, mesh_sampler)
 
-    _, _, _, _, _, pred_ana, pred_ana2 = model(org_tensor.to(dev), smpl, mesh_sampler)
+
+    # _, _, _, _, _, pred_ana, pred_ana2 = model(org_tensor.to(dev), smpl, mesh_sampler)
 
         # loss = loss_fn(pred_ana, ana_tensor.to(dev))
         # optimizer.zero_grad()
         # loss.backward()
         # torch.nn.utils.clip_grad_norm_(model.parameters(),1.)
+
     return pred_ana, pred_ana2, ana_tensor
+
 from PIL import Image
 
 
-
- 
-# Prepare the dataset with 3D contact information
-def prepare_dataset(batch_size, data_path='Path/to/GraphiContact/datasets/behave/Date01_Sub01_basketball/',
-                    label_path='Path/to/GraphiContact/HOT-Annotated/Release_Datasets/damon/hot_dca_trainval.npz'):
-    org_img_paths = []
-    org_label_paths = []
-    org_img_paths_raw = os.listdir(data_path)
+# def prepare_dataset(batch_size, data_path='datasets/rich/cam_00/',
+#                     label_path='datasets/rich/lb_LectureHall_003_wipingchairs1/'):
+#     org_img_paths = []
+#     org_label_paths = []
+#     org_img_paths_raw = os.listdir(data_path)
     
-    for i in org_img_paths_raw:
-        if i != 'info.json' and int(i.split('.')[0].split('t')[-1]) <= 40:
-            temp_l = os.path.join(data_path, i) + '/' + 'sports ball/fit01/sports ball_fit_contact.npz'
-            label_t = np.load(temp_l, allow_pickle=True)['arr_0']
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k0.color.jpg')
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k1.color.jpg')
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k2.color.jpg')
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k3.color.jpg')
+
+#     for i in org_img_paths_raw:
+        
+#         if int(i.split('_')[0]) <= 500:
+#             temp_l = label_path + i.split('_')[0] + '/003_contact.npz'
+#             label_t = np.load(temp_l, allow_pickle=True)['arr_0']
+#             org_img_paths.append(os.path.join(data_path, i))
+#             org_label_paths.append(label_t)
+            
+        
+#     batch_size = 4
+#     train_data = org_img_paths
+#     contact_label = org_label_paths
+#     train_data = [data for data in train_data if len(train_data) >= 5]
+#     contact_label = [data for data in contact_label if len(data) == 6890]
+#     print('total training length: ' + str(len(train_data)))
+    
+#     batch_input = []
+#     for i in range(0, int(len(train_data)/batch_size)):
+#         data_batch = train_data[i*batch_size:(i+1)*batch_size]
+#         label_batch = contact_label[i*batch_size:(i+1)*batch_size]
+#         batch_input.append((data_batch,label_batch))
+#     return iter(batch_input)
+
+
+# def prepare_dataset_test(batch_size, data_path='datasets/rich/cam_00/',
+#                     label_path='datasets/rich/lb_LectureHall_003_wipingchairs1/'):
+#     org_img_paths_raw = os.listdir(data_path)
+#     org_img_paths = []
+#     org_label_paths = []
+#     for i in org_img_paths_raw:
+        
+#         if int(i.split('_')[0]) > 500 and int(i.split('_')[0])  < 700:
+#             temp_l = label_path + i.split('_')[0] + '/003_contact.npz'
+#             label_t = np.load(temp_l, allow_pickle=True)['arr_0']
+#             org_img_paths.append(os.path.join(data_path, i))
+#             org_label_paths.append(label_t)
+            
+#     train_data = org_img_paths
+#     contact_label = org_label_paths
+#     train_data = [data for data in train_data if len(train_data) >= 5]
+#     contact_label = [data for data in contact_label if len(data) == 6890]
+#     print('total test length: ' + str(len(train_data)))
+    
+#     batch_input = []
+#     for i in range(0, int(len(train_data)/batch_size)):
+#         data_batch = train_data[i*batch_size:(i+1)*batch_size]
+#         label_batch = contact_label[i*batch_size:(i+1)*batch_size]
+#         batch_input.append((data_batch,label_batch))
+#     return iter(batch_input)
+ 
+# def prepare_dataset(batch_size, data_path='datasets/behave/Date01_Sub01_basketball/',
+#                     label_path='HOT-Annotated/Release_Datasets/damon/hot_dca_trainval.npz'):
+#     org_img_paths = []
+#     org_label_paths = []
+#     org_img_paths_raw = os.listdir(data_path)
+    
+#     for i in org_img_paths_raw:
+#         if i != 'info.json' and int(i.split('.')[0].split('t')[-1]) <= 40:
+#             temp_l = os.path.join(data_path, i) + '/' + 'sports ball/fit01/sports ball_fit_contact.npz'
+#             label_t = np.load(temp_l, allow_pickle=True)['arr_0']
+#             org_label_paths.append(label_t[:6890])
+#             org_img_paths.append(os.path.join(data_path, i) + '/k0.color.jpg')
+#             org_label_paths.append(label_t[:6890])
+#             org_img_paths.append(os.path.join(data_path, i) + '/k1.color.jpg')
+#             org_label_paths.append(label_t[:6890])
+#             org_img_paths.append(os.path.join(data_path, i) + '/k2.color.jpg')
+#             org_label_paths.append(label_t[:6890])
+#             org_img_paths.append(os.path.join(data_path, i) + '/k3.color.jpg')
             
             
+
+#     batch_size = 4
+#     train_data = org_img_paths
+#     contact_label = org_label_paths
+#     train_data = [data for data in train_data if len(train_data) >= 5]
+#     contact_label = [data for data in contact_label if len(data) == 6890]
+#     print('total training length: ' + str(len(train_data)))
+    
+#     batch_input = []
+#     for i in range(0, int(len(train_data)/batch_size)):
+#         data_batch = train_data[i*batch_size:(i+1)*batch_size]
+#         label_batch = contact_label[i*batch_size:(i+1)*batch_size]
+#         batch_input.append((data_batch,label_batch))
+#     return iter(batch_input)
+
+
+# def prepare_dataset_test(batch_size, data_path='datasets/behave/Date01_Sub01_basketball/',
+#                     label_path='HOT-Annotated/Release_Datasets/damon/hot_dca_trainval.npz'):
+#     org_img_paths_raw = os.listdir(data_path)
+#     org_img_paths = []
+#     org_label_paths = []
+#     for i in org_img_paths_raw:
+#         if i != 'info.json' and int(i.split('.')[0].split('t')[-1]) > 40:
+#             temp_l = os.path.join(data_path, i) + '/' + 'sports ball/fit01/sports ball_fit_contact.npz'
+#             # temp_l = os.path.join(data_path, i) + '/' + 'boxlarge/fit01/boxlarge_fit_contact.npz'
+#             label_t = np.load(temp_l, allow_pickle=True)['arr_0']
+#             org_label_paths.append(label_t[:6890])
+#             org_img_paths.append(os.path.join(data_path, i) + '/k0.color.jpg')
+#             org_label_paths.append(label_t[:6890])
+#             org_img_paths.append(os.path.join(data_path, i) + '/k1.color.jpg')
+#             org_label_paths.append(label_t[:6890])
+#             org_img_paths.append(os.path.join(data_path, i) + '/k2.color.jpg')
+#             org_label_paths.append(label_t[:6890])
+#             org_img_paths.append(os.path.join(data_path, i) + '/k3.color.jpg')
+            
+#     train_data = org_img_paths
+#     contact_label = org_label_paths
+#     train_data = [data for data in train_data if len(train_data) >= 5]
+#     contact_label = [data for data in contact_label if len(data) == 6890]
+#     print('total test length: ' + str(len(train_data)))
+    
+#     batch_input = []
+#     for i in range(0, int(len(train_data)/batch_size)):
+#         data_batch = train_data[i*batch_size:(i+1)*batch_size]
+#         label_batch = contact_label[i*batch_size:(i+1)*batch_size]
+#         batch_input.append((data_batch,label_batch))
+#     return iter(batch_input)
+
+
+
+
+
+def prepare_dataset(batch_size, data_path='HOT-Annotated/images',
+                    label_path='HOT-Annotated/Release_Datasets/damon/hot_dca_trainval.npz'):
+    
+    org_img_paths = os.listdir(data_path)
+    org_img_paths = [os.path.join(data_path, path) for path in org_img_paths]
+
+    seg_path='HOT-Annotated/segments'
+    org_seg_paths = os.listdir(seg_path)
+    seg_img_paths = [os.path.join(seg_path, path) for path in org_seg_paths]
+    seg_path='HOT-Annotated/segments'
+    part_path='datasets/Damon_Scene/damon_segmentations/parts/training'
+    org_part_paths = os.listdir(part_path)
+    part_img_paths = [os.path.join(part_path, path) for path in org_part_paths]
 
     batch_size = 4
-    train_data = org_img_paths
-    contact_label = org_label_paths
+    train_label = np.load(label_path)
+    train_imgs_names = train_label['imgname']
+    seg_imgs_names = train_label['scene_seg']
+    part_imgs_names = train_label['part_seg']
+    print(part_imgs_names)
+    train_imgs_names = [img.split('/')[-1] for img in train_imgs_names]
+    seg_imgs_names = [img.split('/')[-1] for img in seg_imgs_names]
+    part_imgs_names = [img.split('/')[-1] for img in part_imgs_names]
+    train_3d_con_label = train_label['contact_label']
+
+    train_data = []
+    seg_data = []
+    part_data = []
+    contact_label = []
+    for img_path in org_img_paths:
+        for i in range(len(train_imgs_names)):
+            if train_imgs_names[i] in img_path:
+                train_data.append(img_path)
+                contact_label.append(train_3d_con_label[i])
+    for img_path in seg_img_paths:    
+        for i in range(len(seg_imgs_names)):
+            if seg_imgs_names[i] in img_path:
+                seg_data.append(img_path)
+    for img_path in part_img_paths:  
+        for i in range(len(part_imgs_names)):
+            if part_imgs_names[i] in img_path:
+                part_data.append(img_path)
+    print(len(train_data))
+    print('seg', len(seg_data))
+    print('part', len(part_data))
+    train_data = train_data[:4384]
+    contact_label = contact_label[:4384]
     train_data = [data for data in train_data if len(train_data) >= 5]
     contact_label = [data for data in contact_label if len(data) == 6890]
     print('total training length: ' + str(len(train_data)))
@@ -330,44 +517,67 @@ def prepare_dataset(batch_size, data_path='Path/to/GraphiContact/datasets/behave
     batch_input = []
     for i in range(0, int(len(train_data)/batch_size)):
         data_batch = train_data[i*batch_size:(i+1)*batch_size]
+        seg_batch = seg_data[i*batch_size:(i+1)*batch_size]
+        part_batch = part_data[i*batch_size:(i+1)*batch_size]
         label_batch = contact_label[i*batch_size:(i+1)*batch_size]
-        batch_input.append((data_batch,label_batch))
+        batch_input.append((data_batch, seg_batch, part_batch, label_batch))
     return iter(batch_input)
 
+def prepare_dataset_test(batch_size, data_path='HOT-Annotated/images',
+                    label_path='HOT-Annotated/Release_Datasets/damon/hot_dca_test.npz'):
+    
+    org_img_paths = os.listdir(data_path)
+    org_img_paths = [os.path.join(data_path, path) for path in org_img_paths]
 
-def prepare_dataset_test(batch_size, data_path='Path/to/GraphiContact/datasets/behave/Date01_Sub01_basketball/',
-                    label_path='Path/to/GraphiContact/HOT-Annotated/Release_Datasets/damon/hot_dca_trainval.npz'):
-    org_img_paths_raw = os.listdir(data_path)
-    org_img_paths = []
-    org_label_paths = []
-    for i in org_img_paths_raw:
-        if i != 'info.json' and int(i.split('.')[0].split('t')[-1]) > 40:
-            temp_l = os.path.join(data_path, i) + '/' + 'sports ball/fit01/sports ball_fit_contact.npz'
-            # temp_l = os.path.join(data_path, i) + '/' + 'boxlarge/fit01/boxlarge_fit_contact.npz'
-            label_t = np.load(temp_l, allow_pickle=True)['arr_0']
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k0.color.jpg')
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k1.color.jpg')
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k2.color.jpg')
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k3.color.jpg')
-            
-    train_data = org_img_paths
-    contact_label = org_label_paths
-    train_data = [data for data in train_data if len(train_data) >= 5]
+    seg_path='HOT-Annotated/segments'
+    org_seg_paths = os.listdir(seg_path)
+    seg_img_paths = [os.path.join(seg_path, path) for path in org_seg_paths]
+
+    part_path='datasets/Damon_Scene/damon_segmentations/parts/training'
+    org_part_paths = os.listdir(part_path)
+    part_img_paths = [os.path.join(part_path, path) for path in org_part_paths]
+
+    
+    
+    test_label = np.load(label_path)
+    test_imgs_names = test_label['imgname']
+    test_imgs_names = [img.split('/')[-1] for img in test_imgs_names]
+    test_3d_con_label = test_label['contact_label']
+
+    seg_imgs_names = test_label['scene_seg']
+    part_imgs_names = test_label['part_seg']
+
+    test_data = []
+    seg_data = []
+    part_data = []
+    contact_label = []
+    for img_path in seg_img_paths:    
+        for i in range(len(seg_imgs_names)):
+            if seg_imgs_names[i] in img_path:
+                seg_data.append(img_path)
+    for img_path in part_img_paths:  
+        for i in range(len(part_imgs_names)):
+            if part_imgs_names[i] in img_path:
+                part_data.append(img_path)
+    print('seg', len(seg_data))
+    print('part', len(part_data))
+    for img_path in org_img_paths:
+        for i in range(len(test_imgs_names)):
+            if test_imgs_names[i] in img_path:
+                test_data.append(img_path)
+                contact_label.append(test_3d_con_label[i])
+    test_data = [data for data in test_data if len(test_data) >= 5]
     contact_label = [data for data in contact_label if len(data) == 6890]
-    print('total test length: ' + str(len(train_data)))
+    print('total test length: ' + str(len(test_data)))
     
     batch_input = []
-    for i in range(0, int(len(train_data)/batch_size)):
-        data_batch = train_data[i*batch_size:(i+1)*batch_size]
+    for i in range(0, int(len(test_data)/batch_size)):
+        data_batch = test_data[i*batch_size:(i+1)*batch_size]
+        seg_batch = seg_data[i*batch_size:(i+1)*batch_size]
+        part_batch = part_data[i*batch_size:(i+1)*batch_size]
         label_batch = contact_label[i*batch_size:(i+1)*batch_size]
-        batch_input.append((data_batch,label_batch))
+        batch_input.append((data_batch, seg_batch, part_batch, label_batch))
     return iter(batch_input)
-
-
 
 def load_models(args):
     smpl = SMPL().to(args.device)

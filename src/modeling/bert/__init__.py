@@ -8,6 +8,7 @@ from .modeling_graphormer import Graphormer
 
 from .e2e_body_network import Graphormer_Body_Network
 # from .e2e_body_network_finetune import Graphormer_Body_Network_1
+from .e2e_body_network_SIMU import Graphormer_Body_Network as Graphormer_Body_Network_SIMU
 
 
 from .e2e_hand_network import Graphormer_Hand_Network

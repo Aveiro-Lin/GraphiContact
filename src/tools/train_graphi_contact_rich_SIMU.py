@@ -7,8 +7,9 @@ import json
 import time
 import datetime
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7" 
+# os.environ["CUDA_VISIBLE_DEVICES"] = "2" 
 import sys
-sys.path.append('Path/to/GraphiContact')
+sys.path.append('/data3/liyang/Proj/GraphiContact/GraphiContact')
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -16,35 +17,37 @@ import torchvision.models as models
 from torchvision.utils import make_grid
 if not torch.cuda.is_available():
     raise SystemError('CUDA is not available.')
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 import gc
 import numpy as np
 import cv2
-from src2.modeling.bert import BertConfig, Graphormer
-from src2.modeling.bert import Graphormer_Body_Network as Graphormer_Network
-# from src_backup.modeling.bert import Graphormer_Body_Network_1 as Graphormer_Network_1
-# from src_backup.modeling.bert import Graphormer_Body_Network_2 as Graphormer_Network_2
-from src2.modeling._smpl import SMPL, Mesh
+from src.modeling.bert import BertConfig, Graphormer
+from src.modeling.bert import Graphormer_Body_Network as Graphormer_Network
+from src.modeling.bert import Graphormer_Body_Network_SIMU as Graphormer_Network_SIMU
+#from src_backup.modeling.bert import Graphormer_Body_Network_1 as Graphormer_Network_1
+#from src_backup.modeling.bert import Graphormer_Body_Network_2 as Graphormer_Network_2
+from src.modeling._smpl import SMPL, Mesh
 from torch.optim.lr_scheduler import MultiStepLR
-from src2.modeling.hrnet.hrnet_cls_net_gridfeat import get_cls_net_gridfeat
-from src2.modeling.hrnet.config import config as hrnet_config
-from src2.modeling.hrnet.config import update_config as hrnet_update_config
-import src2.modeling.data.config as cfg
-from src2.datasets.build import make_data_loader
+from src.modeling.hrnet.hrnet_cls_net_gridfeat import get_cls_net_gridfeat
+from src.modeling.hrnet.config import config as hrnet_config
+from src.modeling.hrnet.config import update_config as hrnet_update_config
+import src.modeling.data.config as cfg
+from src.datasets.build import make_data_loader
 
-from src2.utils.logger import setup_logger
-from src2.utils.comm import synchronize, is_main_process, get_rank, get_world_size, all_gather
-from src2.utils.miscellaneous import mkdir, set_seed
-from src2.utils.metric_logger import AverageMeter, EvalMetricsLogger
+from src.utils.logger import setup_logger
+from src.utils.comm import synchronize, is_main_process, get_rank, get_world_size, all_gather
+from src.utils.miscellaneous import mkdir, set_seed
+from src.utils.metric_logger import AverageMeter, EvalMetricsLogger
 #from src_backup.utils.renderer import Renderer, visualize_reconstruction_and_att_local, visualize_reconstruction_no_text
-from src2.utils.metric_pampjpe import reconstruction_error
-from src2.utils.geometric_layers import orthographic_projection
+from src.utils.metric_pampjpe import reconstruction_error
+from src.utils.geometric_layers import orthographic_projection
 from PIL import Image
 from torchvision import transforms
-from src2.utils.evaluator import evaluator
+from src.utils.evaluator_rich import Evaluator
 
-from tqdm import tqdm
+import pickle
 
 transform = transforms.Compose([           
                     transforms.Resize(224),
@@ -76,16 +79,16 @@ def parse_args():
     #########################################################
     # Loading/saving checkpoints
     #########################################################
-    parser.add_argument("--model_name_or_path", default='Path/to/GraphiContact/src/modeling/bert/bert-base-uncased', type=str, required=False,
+    parser.add_argument("--model_name_or_path", default='src/modeling/bert/bert-base-uncased', type=str, required=False,
                         help="Path to pre-trained transformer model or model type.")
-    # Fill in the checkpoint here; you can use the original checkpoint or the checkpoint from training. The original is ./models/graphormer_release/graphormer_3dpw_state_dict.bin, and the new one is /home/linxj/project/MeshGraphormer/ckpt/deco_grph.pt.
-    parser.add_argument("--resume_checkpoint", default='Path/to/GraphiContact/models/graphormer_release/graphormer_3dpw_state_dict.bin', type=str, required=False,
+    # Original  ./models/graphormer_release/graphormer_3dpw_state_dict.bin  new ./ckpt/deco_grph.pt
+    parser.add_argument("--resume_checkpoint", default='models/graphormer_release/graphormer_3dpw_state_dict.bin', type=str, required=False,
                         help="Path to specific checkpoint for resume training.")
-    parser.add_argument("--resume_checkpoint2", default='Path/to/GraphiContact/models/graphormer_release/graphormer_h36m_state_dict.bin', type=str, required=False,
+    parser.add_argument("--resume_checkpoint2", default='models/graphormer_release/graphormer_h36m_state_dict.bin', type=str, required=False,
                         help="Path to specific checkpoint for resume training.")
     parser.add_argument("--config_name", default="", type=str, 
                         help="Pretrained config name or path if not the same as model_name.")
-    parser.add_argument("--output_dir", default='Path/to/GraphiContact/ckpt', type=str, required=False,
+    parser.add_argument("--output_dir", default='ckpt', type=str, required=False,
                         help="The output directory to save checkpoint and test results.")
     #########################################################
     # Model architectures
@@ -118,17 +121,20 @@ def parse_args():
     parser.add_argument('--seed', type=int, default=88, 
                         help="random seed for initialization.")
     #########################################################
-    # Here are some hyperparameters that need to be set for training.
+    # Here are some hyperparameters to set for the training
     #########################################################
-    parser.add_argument("--lr", default=5e-5) 
-    # parser.add_argument("--lr", default=8e-3) 
+    # parser.add_argument("--lr", default=5e-5) 
+    parser.add_argument("--lr", default=1e-5) 
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_epochs", type=int, default=2000)
 
     parser.add_argument("--n_infers", type=int, default=3, help="number of inference iterations")
+
+    parser.add_argument("--start_early_stopping", default=False) 
     
     args = parser.parse_args()
     return args
+
 
 
 def main(args):
@@ -150,7 +156,7 @@ def main(args):
     # update configs to enable attention outputs
     
 ##################################################
-#   basic train function
+#   Basic train function definition
     dev = args.device
     _model.to(dev)
     smpl.to(dev)
@@ -163,32 +169,37 @@ def main(args):
     
     loss_fn = nn.BCELoss()
         
+    # Only the newly added parameters are trained, leaving the original parameters unchanged.
     optimizer = torch.optim.Adam(_model.contact_parameters(),lr=lr)
     # print(_model.contact_parameters)
     scheduler = MultiStepLR(optimizer, milestones=[40, 80], gamma=0.1)
     
+    evaluator = Evaluator()
     if args.run_eval_only:
         all_pred = []
         all_gt = []
-        test_data = prepare_dataset_test(batch_size)
+        test_data = prepare_dataset_test(batch_size, n_infers=args.n_infers)
         for idx, batch in enumerate(test_data):
             pred_ana, ana_tensor = test_batch(model=_model, smpl=smpl, mesh_sampler=mesh_sampler,
                             batch=batch, optimizer=optimizer, loss_fn=loss_fn, dev=dev)
             all_pred.append(pred_ana)
             all_gt.append(ana_tensor)
-        pre, rec, f1, fp_geo_err, fn_geo_err = evaluator(all_pred, all_gt)
+        pre, rec, f1, fp_geo_err, fn_geo_err, _ = evaluator(all_pred, all_gt)
         print('pre:', pre.cpu().numpy(), 'rec:', rec.cpu().numpy(), "f1:", f1.cpu().numpy(), 'fp_geo_err:', fp_geo_err.cpu().numpy(), 'fn_geo_err:', fn_geo_err.cpu().numpy())
         
+    evaluator = Evaluator(start_early_stopping=args.start_early_stopping)
+    # for i in range(5):
     for i in range(100):
-        train_data = prepare_dataset(batch_size)
+        train_data = prepare_dataset(batch_size, n_infers=args.n_infers)
         for idx, batch in enumerate(train_data):
             try:
-            # There is dirty data that is difficult to clean, mainly reflected in the presence of grayscale images mixed in with colored images.
+
                 loss = train_batch(model=_model, smpl=smpl, mesh_sampler=mesh_sampler,
                                 batch=batch, optimizer=optimizer, scheduler=scheduler, loss_fn=loss_fn, dev=dev,
                                 n_infers=args.n_infers)
-                if (idx % 100) == 0:
-                    print(loss.data.cpu().numpy())
+                # if (idx % 100) == 0:
+                #     print(loss.data.cpu().numpy())
+                print(loss.data.cpu().numpy())
                 
             # org_img_batch, ana_contact_batch = batch
             # if len(org_img_batch) >= 1:
@@ -207,8 +218,9 @@ def main(args):
             #     print(loss.data.cpu().numpy())
             #     scheduler.step()
                 # return loss.data
-            except:
+            except Exception as e:
                 print('??')
+                print(e)
                 continue
 
         if (i+1) % 1 == 0:
@@ -218,7 +230,7 @@ def main(args):
             all_pred2 = []
             all_pred3 = []
             all_gt2 = []
-            test_data = prepare_dataset_test(batch_size)
+            test_data = prepare_dataset_test(batch_size, n_infers=args.n_infers)
 
             for idx, batch in enumerate(test_data):
                 pred_ana, pred_ana2, ana_tensor  = test_batch(model=_model, smpl=smpl, mesh_sampler=mesh_sampler,
@@ -236,8 +248,8 @@ def main(args):
                 
                 all_pred2.append(pred_ana.cpu().numpy())
                 all_pred3.append(pred_ana2.cpu().numpy())
-                #pred_ana = pred_ana * 0.44 + pred_ana2 * 0.43
-                pred_ana[pred_ana < 0.59] = 0
+                #pred_ana = pred_ana*0.55 + pred_ana2*0.54
+                pred_ana[pred_ana  >0.45] = 1
                 all_pred.append(pred_ana)
                 
                 all_gt.append(ana_tensor)
@@ -245,12 +257,17 @@ def main(args):
                 all_gt2.append(ana_tensor.cpu().numpy())
             
 
-            pre, rec, f1, fp_geo_err, fn_geo_err = evaluator(all_pred, all_gt)
+            pre, rec, f1, fp_geo_err, fn_geo_err, early_stop = evaluator(all_pred, all_gt)
             print('pre:', pre.cpu().numpy(), 'rec:', rec.cpu().numpy(), "f1:", f1.cpu().numpy(), 'fp_geo_err:', fp_geo_err.cpu().numpy(), 'fn_geo_err:', fn_geo_err.cpu().numpy())
 
-            torch.save(_model.state_dict(), 'Path/to/GraphiContact/ckpt/deco_grph_behave.pt')
+            if early_stop:
+                print(f'early stop!!!')
+                break
+
+    # Model saving path after training
+            torch.save(_model.state_dict(), 'ckpt/deco_grph_rich.pt')
         
-# train function
+# Train function
 def train_batch(model, smpl, mesh_sampler, batch, optimizer, scheduler, loss_fn, dev='cuda', n_infers=3):
     org_img_batchs, ana_contact_batchs = batch
     loss = 0
@@ -275,32 +292,31 @@ def train_batch(model, smpl, mesh_sampler, batch, optimizer, scheduler, loss_fn,
     else:
         return 0
 
-    loss = 0 # m!
-    for i_infers in range(n_infers): # m!
-        loss += loss_fn(pred_ana[i_infers], ana_tensor[i_infers].to(dev)) / n_infers # m!
-        loss += loss_fn(pred_ana2[i_infers], ana_tensor[i_infers].to(dev)) * 0.1 / n_infers # m!
+    loss = 0
+    for i_infers in range(n_infers):
+        loss += loss_fn(pred_ana[i_infers], ana_tensor[i_infers].to(dev)) / n_infers
+        loss += loss_fn(pred_ana2[i_infers], ana_tensor[i_infers].to(dev)) * 0.1 / n_infers
         
-        # loss += loss_fn(pred_ana, ana_tensor.to(dev))
-        # loss += loss_fn(pred_ana2, ana_tensor.to(dev)) * 0.1
         
         
     # loss /= n_infers
-    optimizer.zero_grad() # m!
-    loss.backward() # m!
-    torch.nn.utils.clip_grad_norm_(model.parameters(),1.) # m!
-    optimizer.step() # m!
-    return loss.data # m!
+    optimizer.zero_grad()
+    loss.backward()
+    torch.nn.utils.clip_grad_norm_(model.parameters(),1.)
+    optimizer.step()
+    # scheduler.step()
+    return loss.data
 
-# test function
+# Test function
 @torch.no_grad()
 def test_batch(model, smpl, mesh_sampler, batch, optimizer, loss_fn, dev='cuda'):
-    org_img_batchs, ana_contact_batchs = batch # m!
+    org_img_batchs, ana_contact_batchs = batch
     #if len(org_img_batch) >= 1:
-    org_img_arry = [[transform(Image.open(image_file)) for image_file in org_img_batch] for org_img_batch in org_img_batchs] # m!
+    org_img_arry = [[transform(Image.open(image_file)) for image_file in org_img_batch] for org_img_batch in org_img_batchs]
 
-    # org_tensor = torch.tensor([item.cpu().detach().numpy() for item in org_img_arry]).float() # m!
-    org_tensor = torch.tensor([[item.cpu().detach().numpy() for item in arr] for arr in org_img_arry]).float() # m!
-    ana_tensor = torch.tensor(ana_contact_batchs).float() # m!
+    # org_tensor = torch.tensor([item.cpu().detach().numpy() for item in org_img_arry]).float()
+    org_tensor = torch.tensor([[item.cpu().detach().numpy() for item in arr] for arr in org_img_arry]).float()
+    ana_tensor = torch.tensor(ana_contact_batchs).float()
 
     _, _, _, _, _, pred_ana, pred_ana2 = model(org_tensor.to(dev), smpl, mesh_sampler)
 
@@ -308,38 +324,37 @@ def test_batch(model, smpl, mesh_sampler, batch, optimizer, loss_fn, dev='cuda')
         # optimizer.zero_grad()
         # loss.backward()
         # torch.nn.utils.clip_grad_norm_(model.parameters(),1.)
-    pred_ana = pred_ana.mean(0) # m!
-    pred_ana2 = pred_ana2.mean(0) # m!
-    ana_tensor = ana_tensor.mean(0) # m!
+    pred_ana = pred_ana.mean(0)
+    pred_ana2 = pred_ana2.mean(0)
+    ana_tensor = ana_tensor.mean(0)
     return pred_ana, pred_ana2, ana_tensor
 from PIL import Image
 
 
 
  
-# Prepare the dataset with 3D contact information
-def prepare_dataset(batch_size, data_path='Path/to/GraphiContact/datasets/behave/Date01_Sub01_basketball/',
-                    label_path='Path/to/GraphiContact/HOT-Annotated/Release_Datasets/damon/hot_dca_trainval.npz',
+# Prepare data sets for 3d contact information
+def prepare_dataset(batch_size, data_path='datasets/rich/cam_00/',
+                    label_path='datasets/rich/BBQ_001_juggle/',
                     n_infers = 3):
     org_img_paths = []
     org_label_paths = []
     org_img_paths_raw = os.listdir(data_path)
     
-    for i in org_img_paths_raw:
-        if i != 'info.json' and int(i.split('.')[0].split('t')[-1]) <= 40:
-            temp_l = os.path.join(data_path, i) + '/' + 'sports ball/fit01/sports ball_fit_contact.npz'
-            label_t = np.load(temp_l, allow_pickle=True)['arr_0']
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k0.color.jpg')
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k1.color.jpg')
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k2.color.jpg')
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k3.color.jpg')
-            
-            
 
+    for i in org_img_paths_raw:
+        
+        # if int(i.split('_')[0]) <= 500:
+        if int(i.split('_')[0]) <= 200:
+            # temp_l = label_path + i.split('_')[0] + '/001_contact.npz'
+            # label_t = np.load(temp_l, allow_pickle=True)['arr_0']
+            if not os.path.exists(label_path + i.split('_')[0]): continue
+            temp_l = label_path + i.split('_')[0] + '/001.pkl'
+            label_t = pickle.load(open(temp_l, 'rb'))['contact']
+            org_img_paths.append(os.path.join(data_path, i))
+            org_label_paths.append(label_t)
+            
+        
     batch_size = 4
     train_data = org_img_paths
     contact_label = org_label_paths
@@ -347,39 +362,37 @@ def prepare_dataset(batch_size, data_path='Path/to/GraphiContact/datasets/behave
     contact_label = [data for data in contact_label if len(data) == 6890]
     print('total training length: ' + str(len(train_data)))
     
-    batch_input = [] # m!
-    for i in range(0, int(len(train_data)/batch_size)): # m!
-        data_batch = [] # m!
-        label_batch = [] # m!
-        data_batch.append(train_data[i*batch_size:(i+1)*batch_size]) # m!
-        label_batch.append(contact_label[i*batch_size:(i+1)*batch_size]) # m!
-        for j in range(n_infers - 1): # m!
-            rand_idx = np.random.choice(len(train_data), batch_size, replace=True) # m!
-            data_batch.append([train_data[idx] for idx in rand_idx]) # m!
-            label_batch.append([contact_label[idx] for idx in rand_idx]) # m!
-        batch_input.append((data_batch,label_batch)) # m!
+    batch_input = []
+    for i in range(0, int(len(train_data)/batch_size)):
+        data_batch = []
+        label_batch = []
+        data_batch.append(train_data[i*batch_size:(i+1)*batch_size])
+        label_batch.append(contact_label[i*batch_size:(i+1)*batch_size])
+        for j in range(n_infers - 1):
+            rand_idx = np.random.choice(len(train_data), batch_size, replace=True)
+            data_batch.append([train_data[idx] for idx in rand_idx])
+            label_batch.append([contact_label[idx] for idx in rand_idx])
+        batch_input.append((data_batch,label_batch))
     return iter(batch_input)
 
 
-def prepare_dataset_test(batch_size, data_path='Path/to/GraphiContact/datasets/behave/Date01_Sub01_basketball/',
-                    label_path='Path/to/GraphiContact/HOT-Annotated/Release_Datasets/damon/hot_dca_trainval.npz',
+def prepare_dataset_test(batch_size, data_path='datasets/rich/cam_00/',
+                    label_path='datasets/rich/BBQ_001_juggle/',
                     n_infers=3):
     org_img_paths_raw = os.listdir(data_path)
     org_img_paths = []
     org_label_paths = []
     for i in org_img_paths_raw:
-        if i != 'info.json' and int(i.split('.')[0].split('t')[-1]) > 40:
-            temp_l = os.path.join(data_path, i) + '/' + 'sports ball/fit01/sports ball_fit_contact.npz'
-            # temp_l = os.path.join(data_path, i) + '/' + 'boxlarge/fit01/boxlarge_fit_contact.npz'
-            label_t = np.load(temp_l, allow_pickle=True)['arr_0']
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k0.color.jpg')
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k1.color.jpg')
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k2.color.jpg')
-            org_label_paths.append(label_t[:6890])
-            org_img_paths.append(os.path.join(data_path, i) + '/k3.color.jpg')
+        
+        # if int(i.split('_')[0]) > 500 and int(i.split('_')[0])  < 700:
+        if int(i.split('_')[0]) > 200 and int(i.split('_')[0])  < 700:
+            # temp_l = label_path + i.split('_')[0] + '/001_contact.npz'
+            # label_t = np.load(temp_l, allow_pickle=True)['arr_0']
+            if not os.path.exists(label_path + i.split('_')[0]): continue
+            temp_l = label_path + i.split('_')[0] + '/001.pkl'
+            label_t = pickle.load(open(temp_l, 'rb'))['contact']
+            org_img_paths.append(os.path.join(data_path, i))
+            org_label_paths.append(label_t)
             
     train_data = org_img_paths
     contact_label = org_label_paths
@@ -387,18 +400,18 @@ def prepare_dataset_test(batch_size, data_path='Path/to/GraphiContact/datasets/b
     contact_label = [data for data in contact_label if len(data) == 6890]
     print('total test length: ' + str(len(train_data)))
     
-    batch_input = [] # m!
-    for i in range(0, int(len(train_data)/batch_size)): # m!
-        data_batch = [] # m!
-        label_batch = [] # m!
-        data_batch.append(train_data[i*batch_size:(i+1)*batch_size]) # m!
-        label_batch.append(contact_label[i*batch_size:(i+1)*batch_size]) # m!
-        for j in range(n_infers - 1): # m!
-            data_batch.append(train_data[i*batch_size:(i+1)*batch_size]) # m!
-            label_batch.append(contact_label[i*batch_size:(i+1)*batch_size]) # m!
-        batch_input.append((data_batch,label_batch)) # m!
+    batch_input = []
+    for i in range(0, int(len(train_data)/batch_size)):
+        data_batch = []
+        label_batch = []
+        data_batch.append(train_data[i*batch_size:(i+1)*batch_size])
+        label_batch.append(contact_label[i*batch_size:(i+1)*batch_size])
+        for j in range(n_infers - 1):
+            data_batch.append(train_data[i*batch_size:(i+1)*batch_size])
+            label_batch.append(contact_label[i*batch_size:(i+1)*batch_size])
+        batch_input.append((data_batch,label_batch))
     return iter(batch_input)
-
+ 
 
 
 def load_models(args):
@@ -451,8 +464,8 @@ def load_models(args):
         # init a transformer encoder and append it to a list
         assert config.hidden_size % config.num_attention_heads == 0
         model = model_class(config=config)
-        # The three-layer encoder of Graphormer also uses pre-trained models
-        # Initialize two sets of encoders with the pre-trained weights from both 3DPW and H36M, and average the outputs
+        #The three-layer encoder for graphormer also uses a pre-trained model
+        # Initialize two Encoders with 3dpw and h36m pre-trained weights at the same time and average the output
         model_dict = model.state_dict()
         # for k, v in pretrained_dict.items():
         #     if k.split('trans_encoder.2.')[-1] in model_dict.keys():
@@ -485,7 +498,7 @@ def load_models(args):
         trans_encoder2.append(model2)
 
     # init ImageNet pre-trained backbone model
-    dir = 'Path/to/GraphiContact/' # M!
+    dir = '' # M!
     if args.arch=='hrnet':
         hrnet_yaml = op.join(dir, 'models/hrnet/cls_hrnet_w40_sgd_lr5e-2_wd1e-4_bs32_x100.yaml') # M!
         hrnet_checkpoint = op.join(dir, 'models/hrnet/hrnetv2_w40_imagenet_pretrained.pth') # M!
@@ -517,7 +530,8 @@ def load_models(args):
     logger.info('Backbone total parameters: {}'.format(backbone_total_params))
 
     # build end-to-end Graphormer network (CNN backbone + multi-layer graphormer encoder)
-    _model = Graphormer_Network(args, config, backbone, trans_encoder, trans_encoder2, mesh_sampler)
+    # _model = Graphormer_Network(args, config, backbone, trans_encoder, trans_encoder2, mesh_sampler)
+    _model = Graphormer_Network_SIMU(args, config, backbone, trans_encoder, trans_encoder2, mesh_sampler)
 
     # if args.resume_checkpoint!=None and args.resume_checkpoint!='None':
     #     # for fine-tuning or resume training or inference, load weights from checkpoint

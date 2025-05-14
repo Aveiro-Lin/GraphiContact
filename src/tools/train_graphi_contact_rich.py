@@ -6,9 +6,9 @@ import code
 import json
 import time
 import datetime
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"  
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"  
 import sys
-sys.path.append('Path/to/GraphiContact')
+sys.path.append('/data3/liyang/Proj/GraphiContact/GraphiContact')
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -43,7 +43,8 @@ from src.utils.metric_pampjpe import reconstruction_error
 from src.utils.geometric_layers import orthographic_projection
 from PIL import Image
 from torchvision import transforms
-from src.utils.evaluator_rich import evaluator
+from src.utils.evaluator_rich import Evaluator
+import pickle
 
 transform = transforms.Compose([           
                     transforms.Resize(224),
@@ -75,16 +76,16 @@ def parse_args():
     #########################################################
     # Loading/saving checkpoints
     #########################################################
-    parser.add_argument("--model_name_or_path", default='Path/to/GraphiContact/src/modeling/bert/bert-base-uncased', type=str, required=False,
+    parser.add_argument("--model_name_or_path", default='src/modeling/bert/bert-base-uncased', type=str, required=False,
                         help="Path to pre-trained transformer model or model type.")
     # original ./models/graphormer_release/graphormer_3dpw_state_dict.bin ; new ./ckpt/deco_grph.pt
-    parser.add_argument("--resume_checkpoint", default='Path/to/GraphiContact/models/graphormer_release/graphormer_3dpw_state_dict.bin', type=str, required=False,
+    parser.add_argument("--resume_checkpoint", default='models/graphormer_release/graphormer_3dpw_state_dict.bin', type=str, required=False,
                         help="Path to specific checkpoint for resume training.")
-    parser.add_argument("--resume_checkpoint2", default='Path/to/GraphiContact/models/graphormer_release/graphormer_h36m_state_dict.bin', type=str, required=False,
+    parser.add_argument("--resume_checkpoint2", default='models/graphormer_release/graphormer_h36m_state_dict.bin', type=str, required=False,
                         help="Path to specific checkpoint for resume training.")
     parser.add_argument("--config_name", default="", type=str, 
                         help="Pretrained config name or path if not the same as model_name.")
-    parser.add_argument("--output_dir", default='Path/to/GraphiContact/ckpt', type=str, required=False,
+    parser.add_argument("--output_dir", default='ckpt', type=str, required=False,
                         help="The output directory to save checkpoint and test results.")
     #########################################################
     # Model architectures
@@ -123,6 +124,8 @@ def parse_args():
     parser.add_argument("--lr", default=1e-5) 
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_epochs", type=int, default=2000)
+
+    parser.add_argument("--start_early_stopping", default=False) 
     
     args = parser.parse_args()
     return args
@@ -166,19 +169,24 @@ def main(args):
     # print(_model.contact_parameters)
     scheduler = MultiStepLR(optimizer, milestones=[40, 80], gamma=0.1)
     
+    evaluator = Evaluator()
     if args.run_eval_only:
         all_pred = []
         all_gt = []
+        # 这里是跑BBQ_001_juggle的子集。如果要跑其他集合，可以调用时更改data_path和label_path
         test_data = prepare_dataset_test(batch_size)
         for idx, batch in enumerate(test_data):
             pred_ana, ana_tensor = test_batch(model=_model, smpl=smpl, mesh_sampler=mesh_sampler,
                             batch=batch, optimizer=optimizer, loss_fn=loss_fn, dev=dev)
             all_pred.append(pred_ana)
             all_gt.append(ana_tensor)
-        pre, rec, f1, fp_geo_err, fn_geo_err = evaluator(all_pred, all_gt)
+        pre, rec, f1, fp_geo_err, fn_geo_err, _ = evaluator(all_pred, all_gt)
         print('pre:', pre.cpu().numpy(), 'rec:', rec.cpu().numpy(), "f1:", f1.cpu().numpy(), 'fp_geo_err:', fp_geo_err.cpu().numpy(), 'fn_geo_err:', fn_geo_err.cpu().numpy())
         
-    for i in range(5):
+    evaluator = Evaluator(start_early_stopping=args.start_early_stopping)
+    # for i in range(5):
+    for i in range(100):
+        # 这里是跑BBQ_001_juggle的子集。如果要跑其他集合，可以调用时更改data_path和label_path
         train_data = prepare_dataset(batch_size)
         for idx, batch in enumerate(train_data):
             try:
@@ -216,6 +224,7 @@ def main(args):
             all_pred2 = []
             all_pred3 = []
             all_gt2 = []
+            # 这里是跑BBQ_001_juggle的子集。如果要跑其他集合，可以调用时更改data_path和label_path
             test_data = prepare_dataset_test(batch_size)
 
             for idx, batch in enumerate(test_data):
@@ -243,11 +252,15 @@ def main(args):
                 all_gt2.append(ana_tensor.cpu().numpy())
             
 
-            pre, rec, f1, fp_geo_err, fn_geo_err = evaluator(all_pred, all_gt)
+            pre, rec, f1, fp_geo_err, fn_geo_err, early_stop = evaluator(all_pred, all_gt)
             print('pre:', pre.cpu().numpy(), 'rec:', rec.cpu().numpy(), "f1:", f1.cpu().numpy(), 'fp_geo_err:', fp_geo_err.cpu().numpy(), 'fn_geo_err:', fn_geo_err.cpu().numpy())
 
+            if early_stop:
+                print(f'early stop!!!')
+                break
+
     # Model saving path after training
-            torch.save(_model.state_dict(), 'Path/to/GraphiContact/ckpt/deco_grph_rich.pt')
+            torch.save(_model.state_dict(), 'ckpt/deco_grph_rich.pt')
         
 # Training function
 def train_batch(model, smpl, mesh_sampler, batch, optimizer, scheduler, loss_fn, dev='cuda'):
@@ -299,9 +312,9 @@ def test_batch(model, smpl, mesh_sampler, batch, optimizer, loss_fn, dev='cuda')
     return pred_ana, pred_ana2, ana_tensor
 from PIL import Image
 
-
-def prepare_dataset(batch_size, data_path='Path/to/GraphiContact/datasets/rich/cam_00/',
-                    label_path='Path/to/GraphiContact/datasets/rich/lb_LectureHall_003_wipingchairs1/'):
+# 这里是跑BBQ_001_juggle的子集。如果要跑其他集合，可以调用时更改data_path和label_path
+def prepare_dataset(batch_size, data_path='datasets/rich/cam_00/',
+                    label_path='datasets/rich/BBQ_001_juggle/'):
     org_img_paths = []
     org_label_paths = []
     org_img_paths_raw = os.listdir(data_path)
@@ -309,9 +322,13 @@ def prepare_dataset(batch_size, data_path='Path/to/GraphiContact/datasets/rich/c
 
     for i in org_img_paths_raw:
         
-        if int(i.split('_')[0]) <= 500:
-            temp_l = label_path + i.split('_')[0] + '/003_contact.npz'
-            label_t = np.load(temp_l, allow_pickle=True)['arr_0']
+        # if int(i.split('_')[0]) <= 500:
+        if int(i.split('_')[0]) <= 200:
+            # temp_l = label_path + i.split('_')[0] + '/001_contact.npz'
+            # label_t = np.load(temp_l, allow_pickle=True)['arr_0']
+            if not os.path.exists(label_path + i.split('_')[0]): continue
+            temp_l = label_path + i.split('_')[0] + '/001.pkl'
+            label_t = pickle.load(open(temp_l, 'rb'))['contact']
             org_img_paths.append(os.path.join(data_path, i))
             org_label_paths.append(label_t)
             
@@ -330,17 +347,21 @@ def prepare_dataset(batch_size, data_path='Path/to/GraphiContact/datasets/rich/c
         batch_input.append((data_batch,label_batch))
     return iter(batch_input)
 
-
-def prepare_dataset_test(batch_size, data_path='Path/to/GraphiContact/datasets/rich/cam_00/',
-                    label_path='Path/to/GraphiContact/datasets/rich/lb_LectureHall_003_wipingchairs1/'):
+# 这里是跑BBQ_001_juggle的子集。如果要跑其他集合，可以调用时更改data_path和label_path
+def prepare_dataset_test(batch_size, data_path='datasets/rich/cam_00/',
+                    label_path='datasets/rich/BBQ_001_juggle/'):
     org_img_paths_raw = os.listdir(data_path)
     org_img_paths = []
     org_label_paths = []
     for i in org_img_paths_raw:
         
-        if int(i.split('_')[0]) > 500 and int(i.split('_')[0])  < 700:
-            temp_l = label_path + i.split('_')[0] + '/003_contact.npz'
-            label_t = np.load(temp_l, allow_pickle=True)['arr_0']
+        # if int(i.split('_')[0]) > 500 and int(i.split('_')[0])  < 700:
+        if int(i.split('_')[0]) > 200 and int(i.split('_')[0])  < 700:
+            # temp_l = label_path + i.split('_')[0] + '/001_contact.npz'
+            # label_t = np.load(temp_l, allow_pickle=True)['arr_0']
+            if not os.path.exists(label_path + i.split('_')[0]): continue
+            temp_l = label_path + i.split('_')[0] + '/001.pkl'
+            label_t = pickle.load(open(temp_l, 'rb'))['contact']
             org_img_paths.append(os.path.join(data_path, i))
             org_label_paths.append(label_t)
             

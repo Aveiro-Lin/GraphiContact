@@ -1,21 +1,23 @@
-# Training & Testing
+# Training
 
 ## Original Model
 
 We use the following scripts to train and test on the three datasets you have downloaded. 
 
 ```bash
-bash GraphiContact/run_behave.sh
-bash GraphiContact/run_damon.sh
-bash GraphiContact/run_rich.sh
+cd GraphiContact/
+bash run_behave.sh
+bash run_damon.sh
+bash run_rich.sh
 ```
+The trained model weights are ultimately saved under the `ckpt/` directory.
 
-## MIMO Model
-Adjust the original model architecture[GraphiContact/src/modeling/bert/e2e_body_network.py] to the MIMO model[GraphiContact/src/modeling/bert/e2e_body_network(mimo).py]
+## SIMU Model
 
 ```bash
-python GraphiContact/src/tools/train_deco_contact_behave（mimo）.py
-python GraphiContact/src/tools/train_deco_contact_damon（mimo）.py
-python GraphiContact/src/tools/train_deco_contact_rich（mimo）.py
-'''
-
+cd GraphiContact/
+python src/tools/train_graphi_contact_behave_SIMU.py --n_infers [n]
+python src/tools/train_graphi_contact_damon_SIMU.py --n_infers [n]
+python src/tools/train_graphi_contact_rich_SIMU.py --n_infers [n]
+```
+The `--n_infers` parameter specifies the value of `[n]`, which, as discussed in the paper, can be set to 2, 3, or 4 for ablation studies. The case of `n=1` corresponds to the default baseline model. The trained model weights are eventually saved in the `ckpt/` directory.
