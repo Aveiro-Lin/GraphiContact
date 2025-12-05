@@ -76,6 +76,7 @@ class Graphormer_Body_Network(torch.nn.Module):
         self.config = config
         self.config.device = args.device
         self.backbone = backbone
+        self.n_infers = config.n_infers
         self.encoder_sem = Encoder(encoder='hrnet').to(args.device)
         self.encoder_part = Encoder(encoder='hrnet').to(args.device)
 
@@ -229,7 +230,37 @@ class Graphormer_Body_Network(torch.nn.Module):
         # extract grid features and global image features using a CNN backbone
         # [B, 3, 224, 224]
         # The n_infers dimension is piled onto batch_size, where the backbone is not trained, but only used to extract features.
-        image_feat, grid_feat = self.backbone(images) # [B, 2048] [B, 1024, 7, 7]
+        #image_feat, grid_feat = self.backbone(images) # [B, 2048] [B, 1024, 7, 7]
+        image_feat = []
+        grid_feat_list = []
+
+        for i in range(N):
+            start = i * B
+            end = (i + 1) * B
+            images_i = images[start:end]  # (B, C, H, W)
+
+    # 插入扰动
+            if i == 1:
+                images_i = F.dropout(images_i, p=0.2, training=self.training)
+            elif i == 2:
+                noise = torch.randn_like(images_i) * 0.02
+                images_i = images_i + noise
+            elif i == 3:
+                mask = (torch.rand_like(images_i) > 0.1).float()
+                images_i = images_i * mask
+
+            feat_img, feat_grid = self.backbone(images_i)
+            image_feat_list.append(feat_img)
+            grid_feat_list.append(feat_grid)
+
+        image_feat = torch.cat(image_feat_list, dim=0)  # [N*B, 2048]
+        grid_feat = torch.cat(grid_feat_list, dim=0)    # [N*B, 1024, 7, 7]
+
+
+
+
+
+        
         # print(f'image_feat.shape {image_feat.shape}, grid_feat.shape {grid_feat.shape})') # m!
         ### task 2: scene and part ###### 
         sem_enc_out = self.encoder_sem(images) # [B, 480, 56, 56]
