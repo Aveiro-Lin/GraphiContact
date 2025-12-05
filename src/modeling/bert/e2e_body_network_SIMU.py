@@ -122,6 +122,10 @@ class Graphormer_Body_Network(torch.nn.Module):
             nn.LayerNorm(6890*args.n_infers), # M!
             nn.Sigmoid()
         )
+        self.tarm_module = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(d_model=2048, nhead=8, batch_first=True), 
+            num_layers=1
+        )
     def paint_contact(self, pred_contact):
         """
         Paints the contact vertices on the SMPL mesh
@@ -276,7 +280,9 @@ class Graphormer_Body_Network(torch.nn.Module):
         
         ### image feature and the vertex feature need to be trained to do fusion, make a one-dimensional vector, first give him an mlp layer, do a dimensional conversion.
         # Modified mlp to add a minimum number of parameters, train n_infers models, and n_infers are piled into the channel dimension.
-        image_feat = rearrange(image_feat, '(n b) c -> b (n c)', b=B, n=N) # M!
+        image_feat = rearrange(image_feat, '(n b) c -> b n c', b=B, n=N)  # [B, N, 2048]
+        image_feat = self.tarm_module(image_feat)  # [B, N, 2048]，每个sample内部进行N路径建模
+        image_feat = image_feat.view(B, -1)  # [B, N*2048]
         fuse_img_f = self.img_feature_mlp(image_feat) # [B, 6890]
         # # print(fuse_img_f.shape) # m!
         # print(f'fuse_img_f.shape {fuse_img_f.shape}') # m!
@@ -429,7 +435,8 @@ class Graphormer_Body_Network(torch.nn.Module):
     # All the newly added parameters are packed here. If only contact information is trained, the original model parameters are not involved in the training.
     def contact_parameters(self):
         params = []
-        new_param_list = [self.img_feature_mlp, self.img_feature_mlp2, self.fusion_proj_mlp, self.fusion_proj_mlp2]
+        new_param_list = [self.img_feature_mlp, self.img_feature_mlp2, self.fusion_proj_mlp, self.fusion_proj_mlp2, self.tarm_module]
+
         for func in new_param_list:
             for n, param in func.named_parameters():
                 params.append(param)
