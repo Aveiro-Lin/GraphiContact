@@ -31,35 +31,5 @@ Check [EXP.md](docs/EXP.md) for details.
 
 Our research code is released under the MIT license. See [LICENSE](LICENSE) for details. 
 
-We use submodules from third parties, such as [huggingface/transformers](https://github.com/huggingface/transformers) and [hassony2/manopth](https://github.com/hassony2/manopth). Please see [NOTICE](NOTICE.md) for details. 
-
-Our models have dependency with SMPL and MANO models. Please note that any use of SMPL models and MANO models are subject to **Software Copyright License for non-commercial scientific research purposes**. Please see [SMPL-Model License](https://smpl.is.tue.mpg.de/modellicense) and [MANO License](https://mano.is.tue.mpg.de/license) for details.
 
 
-## Acknowledgments
-
-Our implementation and experiments are built on top of open-source GitHub repositories. We thank all the authors who made their code public, which tremendously accelerates our project progress. If you find these works helpful, please consider citing them as well.
-
-[microsoft/MeshGraphormer](https://github.com/microsoft/MeshGraphormer)
-
-[sha2nkt/deco](https://github.com/sha2nkt/deco)
-
-[astra-vision/PaSCo](https://github.com/astra-vision/PaSCo)
-
-[huggingface/transformers](https://github.com/huggingface/transformers) 
-
-[HRNet/HRNet-Image-Classification](https://github.com/HRNet/HRNet-Image-Classification) 
-
-[nkolot/GraphCMR](https://github.com/nkolot/GraphCMR) 
-
-[akanazawa/hmr](https://github.com/akanazawa/hmr) 
-
-[MandyMo/pytorch_HMR](https://github.com/MandyMo/pytorch_HMR) 
-
-[hassony2/manopth](https://github.com/hassony2/manopth) 
-
-[hongsukchoi/Pose2Mesh_RELEASE](https://github.com/hongsukchoi/Pose2Mesh_RELEASE) 
-
-[mks0601/I2L-MeshNet_RELEASE](https://github.com/mks0601/I2L-MeshNet_RELEASE) 
-
-[open-mmlab/mmdetection](https://github.com/open-mmlab/mmdetection) 
