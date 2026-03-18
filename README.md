@@ -1,4 +1,4 @@
-# ✨GraphiContact✨
+# ◉GraphiContact◉
 
 > 🏆 This paper **"GraphiContact: Pose-aware Human-Scene Robust Contact Perception for Interactive Systems"** has been **accepted to ICME 2026**.
 >
