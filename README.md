@@ -4,7 +4,7 @@
 >
 >  Paper: 
 > 
->  Checkpoint: 
+>  Checkpoint: https://huggingface.co/Christopher-Lim/GraphiContact 
 
 
 GraphiContact is a novel method designed to improve 3D human mesh reconstruction and contact point prediction from monocular RGB images. The core functionality of the model integrates pose-aware features with human-scene interaction understanding, enhancing the accuracy of both contact point detection and 3D human reconstruction. The key innovation lies in its use of **Single-Image Multi-Infer Uncertainty (SIMU) Modeling**, which simulates perceptual variations (like occlusions and lighting changes) to boost model robustness in challenging real-world scenarios. Additionally, GraphiContact incorporates a **transformer-based approach**, utilizing pre-trained models through transfer learning and a novel adaptive aggregation mechanism to integrate pose-aware features for more precise human-environment interaction modeling. This unique combination enables the system to achieve superior performance in contact prediction and human reconstruction tasks across multiple benchmark datasets.
