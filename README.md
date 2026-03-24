@@ -2,7 +2,7 @@
 
 > 🏆 This paper **"GraphiContact: Pose-aware Human-Scene Robust Contact Perception for Interactive Systems"** has been **accepted to ICME 2026**.
 >
->  Paper: 
+>  Paper: https://arxiv.org/pdf/2603.20310
 > 
 >  Checkpoint: https://huggingface.co/Christopher-Lim/GraphiContact 
 
